@@ -13,6 +13,8 @@ CAT_COUNTERPARTY = "counterparty"
 CAT_RULE = "rule"
 
 STATUS_PAID = "paid"
+STATUS_PENDING = "pending"
+STATUS_FAILED = "failed"
 STATUS_BANNED = "banned"
 STATUS_APPROVED = "approved"
 
@@ -122,7 +124,54 @@ class MemoryStore:
             return ent
         return None
 
-    def record_paid(self, key: str, counterparty: str, amount: int, denom: str, tx_hash: str) -> None:
+    def payment_status(self, key: str) -> str | None:
+        """Current lifecycle status of a payment intent: paid / pending /
+        failed / None."""
+        ent = self.get_entity(CAT_PAYMENT, key)
+        if ent is None:
+            return None
+        return ent.get("status")
+
+    def claim_intent(self, key: str, counterparty: str, amount: int, denom: str) -> bool:
+        """Reserve the intent BEFORE anything is broadcast.
+
+        Returns True if we now own the claim. Returns False if the intent is
+        already paid or pending (another worker won, or a previous attempt is
+        still in flight). This is the compare-and-set that makes the
+        check -> broadcast -> record sequence safe against concurrent
+        double-pays and crash-after-broadcast retries."""
+        status = self.payment_status(key)
+        if status in (STATUS_PAID, STATUS_PENDING):
+            return False
+        self.client.set_entity(
+            CAT_PAYMENT,
+            key,
+            {
+                "counterparty": counterparty,
+                "amount": amount,
+                "denom": denom,
+                "claimed_at": now_iso(),
+            },
+            status=STATUS_PENDING,
+        )
+        return True
+
+    def mark_failed(self, key: str, reason: str) -> None:
+        """Record a failed attempt (e.g. reverted receipt) so the intent can
+        be retried rather than blocking forever."""
+        self.client.set_entity(
+            CAT_PAYMENT,
+            key,
+            {"failed_at": now_iso(), "reason": reason},
+            status=STATUS_FAILED,
+        )
+        self.write_event(
+            acted=[f"FAILED {key}: {reason}"],
+            extra={"kind": "failure", "key": key, "reason": reason},
+        )
+
+    def record_paid(self, key: str, counterparty: str, amount: int, denom: str, tx_hash: str,
+                    mode: str = "live") -> None:
         self.client.set_entity(
             CAT_PAYMENT,
             key,
@@ -131,13 +180,15 @@ class MemoryStore:
                 "amount": amount,
                 "denom": denom,
                 "tx_hash": tx_hash,
+                "mode": mode,
                 "paid_at": now_iso(),
             },
             status=STATUS_PAID,
         )
         self.write_event(
             acted=[f"PAID {fmt_amount(amount, denom)} to {counterparty} for {key}"],
-            extra={"kind": "payment", "key": key, "tx_hash": tx_hash, "counterparty": counterparty},
+            extra={"kind": "payment", "key": key, "tx_hash": tx_hash,
+                   "mode": mode, "counterparty": counterparty},
         )
 
     # -- counterparties (approved / banned) ----------------------------------

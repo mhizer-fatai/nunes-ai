@@ -82,12 +82,13 @@ result is for.
 | 1 | Sibyl Memory wrapper (5 tiers) | done |
 | 2 | Guard: idempotency / counterparty / temporal rule | done |
 | 3 | CLI: pay, ban, approve, set-rule, rules, search, events, wipe, demo | done |
-| 4 | Base Sepolia executor (`agent/chain.py`) | done (untested live - needs funded wallet) |
-| 5 | `--no-memory` ablation + fresh-process proof | done |
-| 6 | Tests (`tests/test_guard.py`, 4 passing) | done |
+| 4 | Base Sepolia executor (`agent/chain.py`) | done |
+| 5 | `--no-memory` ablation + fresh-process proof | done (ablation now always simulates) |
+| 6 | Tests (`tests/test_guard.py`, 7 passing) | done |
 | 7 | README + docs/demo.md | done |
-| 8 | Live Base Sepolia transaction | **next - needs RPC + funded key** |
-| 9 | 2-5 min demo video + 2 build-in-public posts | **next** |
+| 8 | Live Base Sepolia transaction | **done** - tx `0xa782a891...47441e`, receipt verified on BaseScan |
+| 9 | Safety hardening: pending claim, receipt confirm, chain-id check | done |
+| 10 | 2-5 min demo video + 2 build-in-public posts | **next** |
 
 ## 7. Repo layout
 

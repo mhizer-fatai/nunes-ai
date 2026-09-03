@@ -51,7 +51,7 @@ class Guard:
         ts = req.incurred_at or now_iso()
         evidence: list[str] = []
 
-        # 1. Idempotency: already paid this intent on this chain?
+        # 1. Idempotency: already paid (or already in flight) on this chain?
         paid = self.memory.is_paid(key)
         if paid is not None:
             body = paid.get("body") or {}
@@ -65,6 +65,18 @@ class Guard:
                 ),
                 evidence=tuple(evidence),
             )
+        if self.memory.payment_status(key) == "pending":
+            evidence.append(f"payment {key} -> status pending (claim already held)")
+            return GuardDecision(
+                allowed=False,
+                reason=(
+                    f"intent {req.intent_id} is already in flight (pending claim) - "
+                    "refusing to broadcast a possible duplicate"
+                ),
+                evidence=tuple(evidence),
+            )
+        if self.memory.payment_status(key) == "failed":
+            evidence.append(f"payment {key} -> status failed (previous attempt reverted; retry allowed)")
 
         # 2. Counterparty: banned / approved, exact plus FTS5 alias recall.
         status, notes = self.memory.counterparty_status(req.counterparty, alias=req.alias)
@@ -128,13 +140,14 @@ class Guard:
 
     # -- recording (writes happen only after an outcome) ----------------------
 
-    def record_allowed_and_paid(self, req: PayRequest, tx_hash: str, decision: GuardDecision) -> None:
+    def record_allowed_and_paid(self, req: PayRequest, tx_hash: str, decision: GuardDecision,
+                                mode: str = "live") -> None:
         """Journal a settlement that actually happened."""
         if self.memory is None:
             return
         key = cid_key(req)
         self.memory.record_paid(
-            key, req.counterparty, req.amount, req.denom, tx_hash
+            key, req.counterparty, req.amount, req.denom, tx_hash, mode=mode
         )
         self.memory.write_event(
             evaluated=req.as_dict(),

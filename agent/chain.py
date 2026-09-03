@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.error
 import urllib.request
 from typing import Any
 
@@ -29,12 +30,25 @@ def _rpc(method: str, params: list[Any]) -> Any:
         {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     ).encode()
     req = urllib.request.Request(
-        config.rpc_url, data=body, headers={"Content-Type": "application/json"}
+        config.rpc_url, data=body,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) nunes-ai/0.1.0",
+            "Accept": "application/json",
+        },
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = json.loads(exc.read().decode()).get("error", {}).get("message", "")
+        except Exception:
+            pass
+        raise RuntimeError(f"RPC {method} HTTP {exc.code}: {detail or exc.reason}") from exc
     if "error" in result:
-        raise RuntimeError(f"RPC error: {result['error']}")
+        raise RuntimeError(f"RPC error ({method}): {result['error']}")
     return result["result"]
 
 
@@ -57,8 +71,18 @@ class BaseChain:
         self.signer = Account.from_key(config.private_key)
         self.address = self.signer.address
 
-    def transfer(self, to: str, amount: int) -> str:
-        """Send `amount` USDC (base units) to `to`. Returns the tx hash."""
+    def transfer(self, to: str, amount: int) -> tuple[str, str]:
+        """Send `amount` USDC (base units) to `to`.
+
+        Returns (tx_hash, receipt_status) where receipt_status is "1" if the
+        tx was mined and succeeded, "0" if it reverted, or "pending" if the
+        receipt did not arrive within the wait window."""
+        chain_id = int(_rpc("eth_chainId", []), 16)
+        if chain_id != BASE_SEPOLIA_CHAIN_ID:
+            raise RuntimeError(
+                f"BASE_RPC_URL is on chain {chain_id}, but the agent only signs "
+                f"for Base Sepolia ({BASE_SEPOLIA_CHAIN_ID}) - refusing to broadcast"
+            )
         data = "0x" + ERC20_TRANSFER_SIG + _encode_address(to) + _encode_uint(amount)
         tx: dict[str, Any] = {
             "to": config.usdc_address,
@@ -70,8 +94,25 @@ class BaseChain:
             "gasPrice": int(_rpc("eth_gasPrice", []), 16),
         }
         signed = self.signer.sign_transaction(tx)
-        hash_hex = _rpc("eth_sendRawTransaction", [signed.raw_transaction.hex()])
-        return str(hash_hex)
+        raw_hex = "0x" + signed.raw_transaction.hex()
+        hash_hex = str(_rpc("eth_sendRawTransaction", [raw_hex]))
+        if hash_hex.lower() != signed.hash.lower():
+            raise RuntimeError(
+                f"RPC returned a different tx hash ({hash_hex}) than the locally "
+                f"signed one ({signed.hash}) - refusing to trust it"
+            )
+        return hash_hex, self.wait_for_receipt(hash_hex)
+
+    def wait_for_receipt(self, tx_hash: str, timeout: float = 45.0, poll: float = 2.0) -> str:
+        """Poll for the receipt. Returns the receipt status as '1' or '0',
+        or 'pending' if it did not confirm within `timeout` seconds."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            receipt = _rpc("eth_getTransactionReceipt", [tx_hash])
+            if receipt:
+                return str(receipt.get("status", "0"))
+            time.sleep(poll)
+        return "pending"
 
     def _estimate_gas(self, to: str, amount: int, data: str) -> int:
         try:

@@ -34,6 +34,8 @@ python -m agent.cli --db $db pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D
 python -m agent.cli --db $db pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B --amount 5
 
 # P3 - --no-memory ablation (expect ALLOW again = the double-pay)
+# Note: with live credentials configured, the ablation REFUSES to broadcast
+# real funds and falls back to simulation - it can never spend unguarded.
 python -m agent.cli --no-memory pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B --amount 5
 ```
 
@@ -65,5 +67,6 @@ python -m agent.cli events
 ## Tests
 
 ```powershell
-python -m pytest tests -q   # 4 passed: idempotency, alias ban, temporal, ablation
+python -m pytest tests -q   # 7 passed: idempotency, alias ban, temporal, ablation,
+                            # pending-claim race, failed-retry, ablation-never-broadcasts
 ```

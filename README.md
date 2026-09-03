@@ -77,6 +77,45 @@ fresh-session proof, and the ablation.
 never by the LLM, or a re-prompt hands back a fresh key and the guard is bypassed
 (the same lesson as durable-execution idempotency keys).
 
+Safety properties enforced by the payment path (`agent/cli.py`):
+
+- **`--no-memory` never broadcasts real funds.** The ablation forces simulation even
+  when live credentials are configured - the demo can't spend unguarded money.
+- **Claim before broadcast.** A live payment first writes a `pending` claim to memory
+  (compare-and-set); concurrent or retried runs are refused while the claim is held.
+- **Paid only on receipt.** The tx hash is verified against the locally signed hash, the
+  chain id is checked against Base Sepolia, and the onchain receipt is confirmed before
+  the intent is marked `paid`. A reverted tx marks the attempt `failed` (retry allowed);
+  an unconfirmed tx stays `pending` (fails safe - no double-pay).
+
+## Where memory is load-bearing (for judges)
+
+| What | Where |
+| --- | --- |
+| **Memory reads** (the guard's recalls: paid-intent, counterparty ban/alias, temporal rule) | `agent/guard.py` - `Guard.check()` |
+| **Memory writes** (paid marker + ALLOW/BLOCK decision records to the COLD journal) | `agent/guard.py` - `record_allowed_and_paid()` / `record_blocked()`; `agent/memory.py` - `record_paid()`, `claim_intent()` |
+| Sibyl MemoryClient tier wrapper (WARM entities, COLD journal, HOT state, FTS5 search) | `agent/memory.py` - `MemoryStore` |
+| The ablation (`--no-memory`) that proves load-bearing | `agent/cli.py` - `cmd_pay()` |
+
+Delete those calls and every safety check disappears: the agent double-pays, re-approves
+banned counterparties, and enforces no policy. That is the gate.
+
+## Live settlement evidence
+
+A real guarded payment on Base Sepolia (executed Sep 3, 2026):
+
+- tx: `0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e`
+  ([BaseScan](https://sepolia.basescan.org/tx/0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e))
+- replaying the same intent in a fresh process is refused with the journaled tx hash
+  (see [docs/demo.md](docs/demo.md)).
+
+## Prior work declaration
+
+All work in this repository - the `agent/` package, tests, and docs - was written
+during the Sep 1-10, 2026 build window of the [Sibyl Labs Hackathon](https://hack.sibyllabs.org/).
+No pre-existing codebase was reused; the only dependencies are the public packages in
+`requirements.txt` (notably `sibyl-memory-client`, the required stack).
+
 ## License
 
 Apache-2.0

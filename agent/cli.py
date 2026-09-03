@@ -39,15 +39,25 @@ def _open_memory(args: argparse.Namespace) -> MemoryStore | None:
     return MemoryStore(args.db) if args.db else MemoryStore()
 
 
-def _journal(guard: Guard, decision: GuardDecision, req: PayRequest, tx_hash: str | None) -> None:
+def _journal(guard: Guard, decision: GuardDecision, req: PayRequest, tx_hash: str | None,
+             mode: str = "sim") -> None:
     if decision.allowed and tx_hash:
-        guard.record_allowed_and_paid(req, tx_hash, decision)
+        guard.record_allowed_and_paid(req, tx_hash, decision, mode=mode)
     elif not decision.allowed:
         guard.record_blocked(req, decision)
 
 
 def cmd_pay(args: argparse.Namespace) -> int:
-    """The four-beat safety primitive: recall, decide, execute, journal."""
+    """The four-beat safety primitive: recall, decide, execute, journal.
+
+    Safety rules enforced here:
+      - `--no-memory` NEVER broadcasts real funds: the ablation forces
+        simulation even when live credentials are configured.
+      - Before a live broadcast the intent is claimed (pending) in memory;
+        only a successful receipt promotes it to `paid`.
+      - A reverted receipt marks the attempt `failed` (retry allowed); an
+        unconfirmed receipt is left `pending` (fails safe: no double-pay).
+    """
     memory = _open_memory(args)
     guard = Guard(memory)
 
@@ -70,18 +80,41 @@ def cmd_pay(args: argparse.Namespace) -> int:
     decision = guard.check(req)
 
     tx_hash: str | None = None
+    mode: str = "sim"
     if decision.allowed:
-        if config.can_execute and not config.simulate:
-            tx_hash = BaseChain().transfer(req.counterparty, req.amount)
+        live_ready = config.can_execute and not config.simulate
+        if args.no_memory and live_ready:
+            print("  ablation: memory is DELETED and live credentials are set -")
+            print("            refusing to broadcast unguarded real funds; forcing simulation")
+            tx_hash = simulate_transfer(req.counterparty, req.amount)
+        elif live_ready:
+            mode = "live"
+            key = cid_key(req)
+            if not memory.claim_intent(key, req.counterparty, req.amount, req.denom):
+                print("  claim: intent already paid or pending - refusing to broadcast")
+                return 1
             print("  settle: broadcasting real Base Sepolia transfer ...")
+            chain = BaseChain()
+            tx_hash, receipt_status = chain.transfer(req.counterparty, req.amount)
+            if receipt_status == "pending":
+                print(f"  warn: receipt not confirmed in time; tx {tx_hash}")
+                print("        intent stays PENDING in memory - it will not be double-paid")
+                _journal(guard, decision, req, None, mode=mode)
+                return 1
+            if receipt_status != "1":
+                print(f"  revert: tx {tx_hash} reverted - marking attempt failed (retry allowed)")
+                memory.mark_failed(key, f"tx {tx_hash} reverted onchain")
+                _journal(guard, decision, req, None, mode=mode)
+                return 1
+            print(f"  confirm: receipt OK - tx {tx_hash}")
         else:
             tx_hash = simulate_transfer(req.counterparty, req.amount)
             print("  settle: simulation mode (set BASE_RPC_URL + BASE_PRIVATE_KEY + NUNES_AI_SIMULATE=0 for real txs)")
 
+    _journal(guard, decision, req, tx_hash, mode=mode)
     _print_decision(decision, req, tx_hash=tx_hash, journaled=memory is not None)
-    _journal(guard, decision, req, tx_hash)
-    if decision.allowed and memory is not None:
-        print(f"\n  journal: {cid_key(req)} marked paid (idempotency armed)")
+    if decision.allowed and memory is not None and tx_hash:
+        print(f"\n  journal: {cid_key(req)} marked paid ({mode}) (idempotency armed)")
     return 0
 
 
@@ -201,8 +234,8 @@ def _demo_beat(guard: Guard, label: str, req: PayRequest) -> None:
     tx_hash: str | None = None
     if decision.allowed:
         tx_hash = simulate_transfer(req.counterparty, req.amount)
+    _journal(guard, decision, req, tx_hash, mode="sim")
     _print_decision(decision, req, tx_hash=tx_hash)
-    _journal(guard, decision, req, tx_hash)
 
 
 def cmd_demo(args: argparse.Namespace) -> int:
