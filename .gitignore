@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Env / secrets
+.env
+.env.local
+!**/.env.example
+
+# Build output
+dist/
+build/
+artifacts/
+
+# Logs
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Sibyl local memory
+~/.sibyl-memory/
+.sibyl-memory/
+
+# Session / tool exports (never commit)
+new-session-*.json
+sibyl-init-*.txt
+dev-auth-*.txt
