@@ -92,7 +92,8 @@ result is for.
 | 8 | Live Base Sepolia transaction | **done** - tx `0xa782a891...47441e`, receipt verified on BaseScan |
 | 9 | Safety hardening: pending claim, receipt confirm, chain-id check | done |
 | 10 | Real product: 3 LLM agents (planner/policy/payments) + dispatcher + `python -m agent.chat` | **done** - verified live: planner ban -> fresh-session payments refusal |
-| 11 | 2-5 min demo video + 2 build-in-public posts | **next** |
+| 11 | Memory-gated x402: `buy` tool + guard hook inside the official SDK + demo vendor; live Sepolia purchase + replay refusal | **done** - tx `0x7cf2cb70...f514c8a537`, 6 offline tests, 35 total passing |
+| 12 | 2-5 min demo video + 2 build-in-public posts | **next** |
 
 ## 7. Repo layout
 

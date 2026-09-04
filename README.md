@@ -165,12 +165,36 @@ judge can trace to a stored entity.
 
 Every ALLOW ends in a real ERC-20 USDC transfer on Base Sepolia, signed and
 broadcast by `agent/chain.py`, receipt-confirmed, and the tx hash is written
-back into memory where the next session reads it to refuse replays. Two live
+back into memory where the next session reads it to refuse replays. Three live
 executed transactions:
 
 - `0xa782a891...47441e` (Sep 3) - [BaseScan](https://sepolia.basescan.org/tx/0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e)
 - `0x15274fda...8ba15c` (Sep 4, routed through the agent team's payments
   agent) - [BaseScan](https://sepolia.basescan.org/tx/0x15274fda7af3cf75bd3b98ed073208a8564fe78ee0ea4611439efcbda58ba15c)
+- `0x7cf2cb70...f514c8a537` (Sep 4, an **x402** purchase: the payments agent
+  bought a paywalled feed through the memory guard - the guard ran on the
+  server's own 402 terms before anything was signed, and the replay was
+  refused citing this tx) - [BaseScan](https://sepolia.basescan.org/tx/0x7cf2cb70f40b251281ce2626c1f104ebeb095045b113552a71ede2f514c8a537)
+
+### Memory-gated x402 (the protocol-native double-pay)
+
+x402 paywalls are the retry double-pay pattern in the wild: the server names
+the price and the recipient, the agent signs, the facilitator settles. The
+payments agent's `buy` tool (`agent/toolkit.py`) runs that flow through the
+official `x402` SDK - but the memory guard sits *inside* the protocol, as a
+before-payment hook (`agent/x402store.py`): the 402's own payTo + amount are
+checked for replays, bans, and the rule cap before any signature exists. A
+refusal aborts the signature, so nothing signable ever leaves the agent.
+Without memory the agent signs whatever any paywall demands - the exact drain
+shape of the Grok/Bankr incident, now structurally impossible.
+
+Run the demo vendor locally (settles for real on Base Sepolia via the public
+testnet facilitator):
+
+```bash
+python -m agent.x402server --port 8077 --pay-to 0x... --amount-usdc 0.01
+python -m agent.chat   # "buy http://127.0.0.1:8077/feed with a 0.05 USDC budget"
+```
 
 Virtuals is deliberately not claimed: one fully verified stack beats a
 decorative second one.

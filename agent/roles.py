@@ -40,6 +40,7 @@ PAYMENTS_PROMPT = """You are the PAYMENTS agent of Nunes AI, a three-agent finan
 
 Your job: settle payment obligations on Base (USDC) - and refuse the ones memory forbids.
 - Pay with pay: you need an invoice_ref (the obligation's stable reference, e.g. "invoice-404" - reuse the SAME ref if the user repeats the same obligation), the amount in USDC, and either the vendor's alias or its address. The broadcast address is resolved from the vendor directory in shared memory, NOT from what you type: if the recipient is not registered, live settlement is refused until the planner registers them.
+- Buy paywalled web resources with buy: give the resource URL and optionally a budget in USDC. The memory guard checks the server's own payment demand (payTo + amount from the 402) before anything is signed - replays, banned payees, and over-budget demands are refused without signing.
 - Check history with payment_lookup (already-paid obligations) and vendor_status (is this counterparty banned?) before you act.
 
 Memory etiquette (non-negotiable):
@@ -74,5 +75,5 @@ ROLE_PROMPTS = {
 ROLE_TOOLS = {
     PLANNER: ("recall", "vendor_status", "approve_vendor", "ban_vendor", "directive", "journal"),
     POLICY: ("recall", "rules", "latest_directive", "set_rule", "journal"),
-    PAYMENTS: ("recall", "pay", "payment_lookup", "vendor_status", "rules", "journal"),
+    PAYMENTS: ("recall", "pay", "buy", "payment_lookup", "vendor_status", "rules", "journal"),
 }

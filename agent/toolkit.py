@@ -331,6 +331,26 @@ def t_pay(ctx: ActorCtx, args: dict) -> str:
             f"  tx: {tx_hash}\n  receipt confirmed. Intent {intent_id} marked paid in memory.")
 
 
+def t_buy(ctx: ActorCtx, args: dict) -> str:
+    """Buy a paywalled resource via x402. The memory guard runs inside the
+    x402 client (before-payment hook) on the server's own terms, so a refusal
+    aborts the signature - nothing signable ever leaves the agent."""
+    try:
+        from .x402store import X402Error, buy
+    except Exception as exc:
+        return f"error: x402 layer unavailable ({exc})"
+    url = str(args.get("url", "") or "").strip()
+    if not url:
+        return "error: buy needs 'url' of the paywalled resource."
+    budget = args.get("budget_usdc")
+    try:
+        return buy(ctx.memory, ctx.actor, url, budget_usdc=float(budget) if budget is not None else None)
+    except X402Error as exc:
+        return f"BLOCKED: {exc}"
+    except Exception as exc:
+        return f"ERROR: x402 purchase failed: {exc}"
+
+
 def t_payment_lookup(ctx: ActorCtx, args: dict) -> str:
     memory = _need_memory(ctx)
     if memory is None:
@@ -425,6 +445,14 @@ SCHEMAS: dict[str, dict] = {
         },
         "required": ["to", "amount_usdc", "invoice_ref"],
     },
+    "buy": {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "budget_usdc": {"type": "number"},
+        },
+        "required": ["url"],
+    },
     "payment_lookup": _OBJ,
 }
 
@@ -480,6 +508,10 @@ TOOLS: dict[str, dict] = {
     "pay": {
         "description": "Settle a payment on Base USDC through the memory guard. The broadcast address is resolved from the vendor directory in memory (registered address or alias), never transcribed. Live mode refuses unregistered recipients. Args: {to: str, amount_usdc: number, invoice_ref: str, alias?: str}",
         "run": t_pay,
+    },
+    "buy": {
+        "description": "Buy a paywalled resource through the x402 protocol, memory-guarded. The guard runs on the server's own terms (payTo + amount from the 402) before anything is signed: replays, banned payees, and over-cap demands are refused. Args: {url: str, budget_usdc?: number}",
+        "run": t_buy,
     },
     "payment_lookup": {
         "description": "List recorded payment intents and their status. Args: {}",
