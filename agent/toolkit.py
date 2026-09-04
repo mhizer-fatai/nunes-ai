@@ -287,28 +287,39 @@ def t_pay(ctx: ActorCtx, args: dict) -> str:
         return "\n".join(lines)
 
     tx_hash: str | None = None
-    mode = "sim"
     if memory is None:
         # Ablation: no memory means no idempotency, no bans, no rules - so this
         # pays. Real funds are NEVER broadcast without the guard; settlement is
         # simulated only. This is the load-bearing contrast: the same request
         # that was refused WITH memory sails through WITHOUT it.
-        tx_hash = simulate_transfer(to, units)
+        tx_hash = simulate_transfer(recipient, units)
         return (f"PAID (SIMULATED - no memory installed, so no ban or duplicate "
                 f"check was possible; refusing to broadcast real funds without the "
-                f"guard): {fmt_amount(units)} -> {to}\n  tx: {tx_hash}")
+                f"guard): {fmt_amount(units)} -> {recipient}\n  tx: {tx_hash}")
     live_ready = config.can_execute and not config.simulate
     if not live_ready:
-        tx_hash = simulate_transfer(to, units)
+        tx_hash = simulate_transfer(recipient, units)
         guard.record_allowed_and_paid(req, tx_hash, decision, mode="sim", actor=ctx.actor)
-        return (f"PAID (simulation - no live credentials): {fmt_amount(units)} -> {to}\n"
+        return (f"PAID (simulation - no live credentials): {fmt_amount(units)} -> {recipient}\n"
                 f"  tx: {tx_hash}\n  intent {intent_id} marked paid in memory (idempotency armed)")
 
     key = cid_key(req)
-    if not memory.claim_intent(key, to, units, "USDC"):
+    if not memory.claim_intent(key, recipient, units, "USDC"):
         return "BLOCKED: intent already paid or pending - refusing to broadcast a possible duplicate."
     chain = BaseChain()
-    tx_hash, receipt_status = chain.transfer(to, units)
+    tx_hash: str | None = None
+    try:
+        tx_hash, receipt_status = chain.transfer(recipient, units)
+    except Exception as exc:
+        # No tx hash in hand means nothing was broadcast: a retry is safe, so
+        # the attempt is marked failed. With a hash we would keep the claim
+        # PENDING (fail-safe: never risk a double broadcast).
+        memory.mark_failed(key, f"executor error before broadcast: {exc}")
+        memory.write_event(
+            acted=[f"{ctx.actor.upper()} BLOCKED broadcast for {key}: executor error: {exc}"],
+            extra={"kind": "executor-error", "actor": ctx.actor, "key": key},
+        )
+        return f"ERROR: settlement executor failed before broadcast ({exc}). Attempt marked failed - retry allowed."
     if receipt_status == "pending":
         return (f"WARN: broadcast {tx_hash} but the receipt did not confirm in time. "
                 f"Intent stays PENDING in memory - it will not be double-paid.")
@@ -316,7 +327,7 @@ def t_pay(ctx: ActorCtx, args: dict) -> str:
         memory.mark_failed(key, f"tx {tx_hash} reverted onchain")
         return f"REVERTED: tx {tx_hash} reverted onchain - attempt marked failed (retry allowed)."
     guard.record_allowed_and_paid(req, tx_hash, decision, mode="live", actor=ctx.actor)
-    return (f"PAID on Base Sepolia: {fmt_amount(units)} -> {to}\n"
+    return (f"PAID on Base Sepolia: {fmt_amount(units)} -> {recipient}\n"
             f"  tx: {tx_hash}\n  receipt confirmed. Intent {intent_id} marked paid in memory.")
 
 

@@ -119,15 +119,61 @@ Safety properties enforced by the payment path (`agent/cli.py`):
 
 ## Where memory is load-bearing (for judges)
 
+Everything below is on the critical path of every agent action. Delete these
+calls and the core function breaks - that is the gate.
+
 | What | Where |
 | --- | --- |
-| **Memory reads** (the guard's recalls: paid-intent, counterparty ban/alias, temporal rule) | `agent/guard.py` - `Guard.check()` |
-| **Memory writes** (paid marker + ALLOW/BLOCK decision records to the COLD journal) | `agent/guard.py` - `record_allowed_and_paid()` / `record_blocked()`; `agent/memory.py` - `record_paid()`, `claim_intent()` |
-| Sibyl MemoryClient tier wrapper (WARM entities, COLD journal, HOT state, FTS5 search) | `agent/memory.py` - `MemoryStore` |
-| The ablation (`--no-memory`) that proves load-bearing | `agent/cli.py` - `cmd_pay()` |
+| **Memory reads** - every payment recalls paid-intents, counterparty bans/alias trail, and the temporal rule: `Guard.check()` in `agent/guard.py:37` | `agent/guard.py` |
+| **Memory reads** - governance recalls (ban before approve, directive cap before rule): `decide_vendor_change()` / `decide_rule()` in `agent/guard.py:186` | `agent/guard.py` |
+| **Memory reads** - every agent's pre-action recall (FTS5 + entities + journal): `t_recall` in `agent/toolkit.py:57`, `MemoryStore.recall()` in `agent/memory.py:441` | `agent/toolkit.py`, `agent/memory.py` |
+| **Memory reads** - the vendor directory the broadcast address is resolved from: `resolve_counterparty()` in `agent/memory.py:319` | `agent/memory.py` |
+| **Memory writes** - paid marker, pending work-claim, ALLOW/BLOCK records: `claim_intent()` / `record_paid()` / `record_blocked()` | `agent/memory.py:164`, `agent/guard.py:143` |
+| **Memory writes** - bans, approvals, rules, directives, agent notes: `ban/approve_counterparty`, `set_rule`, `set_directive`, `journal_note` | `agent/memory.py:230-477` |
+| The ablation that proves it (`--no-memory` / `AgentCtx(memory=None)`) | `agent/toolkit.py:248`, `agent/cli.py`, `agent/chat.py` |
 
-Delete those calls and every safety check disappears: the agent double-pays, re-approves
-banned counterparties, and enforces no policy. That is the gate.
+## The deletion test (run it yourself)
+
+```bash
+# 1. ban a vendor, then watch a FRESH session refuse to pay it
+python -m agent.chat                 # "ban 0x... alias evil-corp, they scammed us"  -> quit
+python -m agent.chat                 # "pay 2 USDC to 0x... alias evil-corp for invoice-7"  -> BLOCKED, cites the ban
+
+# 2. delete the memory and ask the exact same thing
+python -m agent.cli wipe
+python -m agent.chat --no-memory     # same payment request  -> PAYS (simulated; unguarded funds are never broadcast)
+```
+
+With memory the team refuses; without memory the same request sails through.
+`tests/test_team.py::test_no_memory_pays_what_memory_blocked` asserts the
+contrast, and `tests/test_guard.py::test_ablation_allows_double_pay` asserts
+the double-pay variant.
+
+## How memory made this possible
+
+A shared SQL table could store the same rows. What it could not do is what
+the build leans on: **temporal rule recall** (which cap was in force when the
+obligation was incurred - two overlapping rules, judged correctly), **fuzzy
+alias recall** (a banned vendor re-emerging under a new address is caught by
+FTS5 over the counterparty trail, not by an exact key), and a **load-bearing
+journal** that any teammate reads back before acting - the pending payment
+claim is a work-claim primitive that closes the check->broadcast->record race
+across processes. Those three are why the guard's refusals cite evidence a
+judge can trace to a stored entity.
+
+## Partner stack: Base (verified, load-bearing)
+
+Every ALLOW ends in a real ERC-20 USDC transfer on Base Sepolia, signed and
+broadcast by `agent/chain.py`, receipt-confirmed, and the tx hash is written
+back into memory where the next session reads it to refuse replays. Two live
+executed transactions:
+
+- `0xa782a891...47441e` (Sep 3) - [BaseScan](https://sepolia.basescan.org/tx/0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e)
+- `0x15274fda...8ba15c` (Sep 4, routed through the agent team's payments
+  agent) - [BaseScan](https://sepolia.basescan.org/tx/0x15274fda7af3cf75bd3b98ed073208a8564fe78ee0ea4611439efcbda58ba15c)
+
+Virtuals is deliberately not claimed: one fully verified stack beats a
+decorative second one.
 
 ## Live settlement evidence
 

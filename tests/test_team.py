@@ -243,3 +243,76 @@ def test_live_refuses_unregistered_vendor(seeded: str, monkeypatch) -> None:
     from agent.toolkit import resolve_broadcast_recipient
     addr, refusal = resolve_broadcast_recipient(_ctx(seeded, roles.PAYMENTS), EVIL, None)
     assert refusal is None and addr == EVIL.lower()
+
+
+def test_broadcast_goes_to_resolved_address_not_the_typed_one(seeded: str, monkeypatch) -> None:
+    """If the model types one address but the alias resolves to a DIFFERENT
+    registered address, the guard checks the registered one AND the broadcast
+    must go to the registered one - never the transcribed one."""
+    import agent.toolkit as tk
+    from agent.toolkit import t_approve_vendor, t_pay
+    monkeypatch.setattr(config, "rpc_url", "https://sepolia.base.org")
+    monkeypatch.setattr(config, "private_key", "0x" + "1" * 64)
+    monkeypatch.setattr(config, "simulate", False)
+
+    t_approve_vendor(_ctx(seeded, roles.PLANNER),
+                     {"address": VENDOR, "aliases": ["acme"], "note": "audited"})
+
+    broadcasted = {}
+
+    class SpyChain:
+        def __init__(self):
+            pass
+
+        def transfer(self, to, amount):
+            broadcasted["to"] = to
+            broadcasted["amount"] = amount
+            return "0xspyhash", "1"
+
+    monkeypatch.setattr(tk, "BaseChain", SpyChain)
+    out = t_pay(_ctx(seeded, roles.PAYMENTS),
+                {"to": EVIL, "amount_usdc": 1, "invoice_ref": "invoice-alias",
+                 "alias": "acme"})
+    assert out.startswith("PAID")
+    # EVIL was typed, but the alias 'acme' is registered to VENDOR: the
+    # broadcast must target the REGISTERED address.
+    assert broadcasted["to"] == VENDOR.lower()
+    assert broadcasted["amount"] == 1 * DEC
+
+
+def test_executor_failure_before_broadcast_marks_failed(seeded: str, monkeypatch) -> None:
+    """An RPC/executor error before broadcast must not brick the intent: the
+    attempt is marked failed and a retry is allowed."""
+    import agent.toolkit as tk
+    from agent.toolkit import t_approve_vendor, t_pay
+    monkeypatch.setattr(config, "rpc_url", "https://sepolia.base.org")
+    monkeypatch.setattr(config, "private_key", "0x" + "1" * 64)
+    monkeypatch.setattr(config, "simulate", False)
+
+    t_approve_vendor(_ctx(seeded, roles.PLANNER), {"address": VENDOR, "note": "ok"})
+
+    class DeadChain:
+        def __init__(self):
+            pass
+
+        def transfer(self, to, amount):
+            raise RuntimeError("RPC down")
+
+    monkeypatch.setattr(tk, "BaseChain", DeadChain)
+    out = t_pay(_ctx(seeded, roles.PAYMENTS),
+                {"to": VENDOR, "amount_usdc": 1, "invoice_ref": "invoice-rpc"})
+    assert out.startswith("ERROR")
+    assert "retry allowed" in out
+
+    # Retry after the outage must not be stuck behind a stale pending claim.
+    class FixedChain:
+        def __init__(self):
+            pass
+
+        def transfer(self, to, amount):
+            return "0xfixed", "1"
+
+    monkeypatch.setattr(tk, "BaseChain", FixedChain)
+    out2 = t_pay(_ctx(seeded, roles.PAYMENTS),
+                 {"to": VENDOR, "amount_usdc": 1, "invoice_ref": "invoice-rpc"})
+    assert out2.startswith("PAID")

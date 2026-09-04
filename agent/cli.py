@@ -12,6 +12,7 @@ from .config import config
 from .guard import Guard, cid_key
 from .memory import MemoryStore, NoMemory, fmt_amount, now_iso
 from .policy import GuardDecision, PayRequest
+from .toolkit import ActorCtx, resolve_broadcast_recipient
 
 USDC_DECIMALS = 10 ** 6
 
@@ -77,6 +78,28 @@ def cmd_brain(args: argparse.Namespace) -> int:
 
     memory = _open_memory(args)
     guard = Guard(memory)
+
+    recipient, refusal = resolve_broadcast_recipient(
+        ActorCtx(actor="cli", memory=memory), req.counterparty, req.alias)
+    if refusal is not None or recipient is None:
+        print(f"  recipient: {refusal}")
+        if memory is not None:
+            memory.write_event(
+                acted=[f"CLI BLOCKED payment to {req.counterparty}: {refusal}"],
+                extra={"kind": "recipient-block", "actor": "cli", "to": req.counterparty},
+            )
+        return 1
+    if recipient != req.counterparty:
+        req = PayRequest(
+            intent_id=req.intent_id,
+            counterparty=recipient,
+            amount=req.amount,
+            denom=req.denom,
+            alias=req.alias,
+            incurred_at=req.incurred_at,
+        )
+        print(f"  recipient: resolved to registered address {recipient}")
+
     decision = guard.check(req)
 
     tx_hash: str | None = None
@@ -156,9 +179,20 @@ def cmd_pay(args: argparse.Namespace) -> int:
     memory = _open_memory(args)
     guard = Guard(memory)
 
+    recipient, refusal = resolve_broadcast_recipient(
+        ActorCtx(actor="cli", memory=memory), args.to, args.alias)
+    if refusal is not None or recipient is None:
+        print(f"  recipient: {refusal}")
+        if memory is not None:
+            memory.write_event(
+                acted=[f"CLI BLOCKED payment to {args.to}: {refusal}"],
+                extra={"kind": "recipient-block", "actor": "cli", "to": args.to},
+            )
+        return 1
+
     req = PayRequest(
         intent_id=args.intent,
-        counterparty=args.to,
+        counterparty=recipient,
         amount=_to_units(args.amount),
         denom="USDC",
         alias=args.alias,
