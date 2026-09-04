@@ -141,18 +141,19 @@ class Guard:
     # -- recording (writes happen only after an outcome) ----------------------
 
     def record_allowed_and_paid(self, req: PayRequest, tx_hash: str, decision: GuardDecision,
-                                mode: str = "live") -> None:
+                                 mode: str = "live", actor: str | None = None) -> None:
         """Journal a settlement that actually happened."""
         if self.memory is None:
             return
         key = cid_key(req)
         self.memory.record_paid(
-            key, req.counterparty, req.amount, req.denom, tx_hash, mode=mode
+            key, req.counterparty, req.amount, req.denom, tx_hash, mode=mode, actor=actor
         )
+        tag = f"{actor.upper()} " if actor else ""
         self.memory.write_event(
             evaluated=req.as_dict(),
             acted=[
-                f"ALLOW {fmt_amount(req.amount, req.denom)} -> {req.counterparty} "
+                f"{tag}ALLOW {fmt_amount(req.amount, req.denom)} -> {req.counterparty} "
                 f"({decision.reason}) tx {tx_hash}"
             ],
             forward=[f"do not pay {key} again"],
@@ -161,17 +162,20 @@ class Guard:
                 "key": key,
                 "tx_hash": tx_hash,
                 "rule_version": decision.rule_version,
+                **({"actor": actor} if actor else {}),
             },
         )
 
-    def record_blocked(self, req: PayRequest, decision: GuardDecision) -> None:
+    def record_blocked(self, req: PayRequest, decision: GuardDecision,
+                       actor: str | None = None) -> None:
         """Journal a refusal."""
         if self.memory is None:
             return
+        tag = f"{actor.upper()} " if actor else ""
         self.memory.write_event(
             evaluated=req.as_dict(),
             acted=[
-                f"BLOCK {fmt_amount(req.amount, req.denom)} -> {req.counterparty} "
+                f"{tag}BLOCK {fmt_amount(req.amount, req.denom)} -> {req.counterparty} "
                 f"({decision.reason})"
             ],
             forward=["do not pay this intent"],
@@ -180,5 +184,86 @@ class Guard:
                 "key": cid_key(req),
                 "rule_version": decision.rule_version,
                 "evidence": list(decision.evidence),
+                **({"actor": actor} if actor else {}),
             },
+        )
+
+    # -- cross-agent governance (contradiction-blocking between roles) ---------
+
+    def decide_vendor_change(self, address: str, *, alias: str | None = None,
+                             target: str, override: bool = False) -> GuardDecision:
+        """A Planner agent wants to write a new vendor verdict (`approve` or
+        `ban`). The guard refuses writes that contradict a standing verdict:
+
+        - approving a banned vendor without an explicit override is refused
+        - banning an already-banned vendor is allowed as an idempotent no-op,
+          but recorded as already-in-force rather than a fresh decision
+        - with memory deleted the write goes through unguarded (the ablation)
+        """
+        if self.memory is None:
+            return GuardDecision(
+                allowed=True,
+                reason=("memory layer deleted - vendor verdicts cannot be checked; "
+                        "this write may contradict a standing decision"),
+            )
+        status, notes = self.memory.counterparty_status(address, alias=alias)
+        evidence = tuple(notes)
+        if target == "approve" and status == "banned" and not override:
+            return GuardDecision(
+                allowed=False,
+                reason=(f"refused: {address} is BANNED in memory and this approval "
+                        f"contradicts it - re-issue with override=true if the team "
+                        f"has genuinely reversed the ban"),
+                evidence=evidence,
+            )
+        if target == "ban" and status == "banned":
+            return GuardDecision(
+                allowed=True,
+                reason=f"already banned in memory - verdict stands, no new decision needed",
+                evidence=evidence,
+            )
+        if target == "approve" and status == "approved":
+            return GuardDecision(
+                allowed=True,
+                reason="already approved in memory - verdict stands",
+                evidence=evidence,
+            )
+        return GuardDecision(
+            allowed=True,
+            reason=f"no standing verdict contradicts this {target}",
+            evidence=evidence,
+        )
+
+    def decide_rule(self, max_amount: int, *, version: str) -> GuardDecision:
+        """A Policy agent wants to set a spending rule. The guard refuses rules
+        that exceed the cap of the latest active Planner directive: within one
+        team, Policy may not silently override what Planner decided.
+
+        With memory deleted the rule goes through unguarded (the ablation).
+        """
+        if self.memory is None:
+            return GuardDecision(
+                allowed=True,
+                reason=("memory layer deleted - directives cannot be checked; "
+                        "this rule may contradict a standing planner cap"),
+            )
+        directive = self.memory.latest_directive()
+        evidence: list[str] = []
+        if directive is not None:
+            body = directive.get("body") or {}
+            cap = body.get("max_amount")
+            dname = directive.get("name")
+            evidence.append(f"latest directive {dname}: '{body.get('title')}' cap={cap}")
+            if cap is not None and max_amount > int(cap):
+                return GuardDecision(
+                    allowed=False,
+                    reason=(f"refused: rule {version} cap {fmt_amount(max_amount)} exceeds "
+                            f"the standing planner directive cap {fmt_amount(int(cap))} "
+                            f"({dname}) - the planner must raise the directive first"),
+                    evidence=tuple(evidence),
+                )
+        return GuardDecision(
+            allowed=True,
+            reason=f"rule {version} fits the standing directive" if directive else "no standing directive to contradict",
+            evidence=tuple(evidence),
         )

@@ -1,16 +1,32 @@
 # Nunes AI
 
-**The memory that makes an AI agent safe to trust with money.**
+**Three agents. One shared memory. No contradictions.**
 
-Nunes AI is an autonomous financial agent whose memory **is** its safety control. It holds a
-Base wallet and executes real onchain actions - but every action is gated by a persistent,
-append-only Sibyl memory that remembers what was already paid, what was approved or banned,
-and which spending rule was in force at the time. If the memory layer is removed, the agent
-becomes dangerous: it double-pays retries, re-approves rejected contracts, and falls for
-prompt-injected drains.
+Nunes AI is a team of three autonomous agents - **planner** (vendors, bans,
+directives), **policy** (spending rules), **payments** (guarded settlement on
+Base) - that share one persistent Sibyl memory. Every decision, ban, payment,
+and rule is written to that memory, and a guard refuses any action that
+contradicts what a teammate recorded - across sessions. Delete the memory and
+the team becomes strangers: it re-pays, re-approves bans, and enforces nothing.
 
-Built for the [Sibyl Labs Hackathon](https://hack.sibyllabs.org/): a load-bearing use of
-[Sibyl Memory](https://docs.sibyllabs.org) on top of Base settlement.
+## Talk to the team
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env        # INCEPTION_API_KEY for the agents' brains;
+                            # BASE_RPC_URL + BASE_PRIVATE_KEY + NUNES_AI_SIMULATE=0 for real settlement
+python -m agent.chat        # interactive session; memory persists at ~/.sibyl-memory/nunes-ai.db
+```
+
+Say things like "ban vendor 0x... (alias evil-corp), they drained a partner",
+"set rule v2: cap 10 USDC from September", or "pay 5 USDC to 0x... for
+invoice-404". A dispatcher routes each request to the right agent; the agent
+recalls shared memory, decides, and acts. In a new session tomorrow, payments
+will still refuse the vendor planner banned today - and cite the ban.
+
+Without keys the agents run in simulation mode (decisions + memory are real,
+settlement is simulated). With live credentials the payments agent broadcasts
+real Base Sepolia USDC transfers once the memory guard allows.
 
 ## The problem
 
@@ -43,13 +59,25 @@ agent safe breaks.
 ## Architecture
 
 ```
-Command --> [ Sibyl Memory guard ] --> Allow  --> execute on Base (journals tx hash to memory)
-           (exact, temporal,         Block --> refuse + record why
-            append-only recall)
+you --> [ dispatcher ] --> planner  --> approve/ban vendors, directives ─┐
+                          policy   --> spending rules, caps ──────────────┤
+                          payments --> pay on Base (USDC) ────────────────┤
+                                                                         v
+                                                     [ shared Sibyl memory + guard ]
+                                                     every action recalled first,
+                                                     every decision journaled after
+```
+
+Each agent is an LLM tool-calling loop (`agent/runtime.py`) with its own role
+prompt and tool belt (`agent/roles.py`, `agent/toolkit.py`); all three read
+and write the same `MemoryStore`, and the guard (`agent/guard.py`) refuses
+cross-agent contradictions: payments cannot pay a planner-banned vendor,
+policy cannot set a rule above the planner's directive cap, and no one can
+re-approve a ban without an explicit recorded override.
 
 Tiers used:
-  WARM  entities        paid intents, approved/banned counterparties, spending rules
-  COLD  journal         every decision: intent, recalled ids, policy, tx, outcome
+  WARM  entities        paid intents, approved/banned counterparties, spending rules, directives
+  COLD  journal         every decision: who, what was recalled, policy applied, tx, outcome
   HOT   state           session policy snapshot
   FTS5  search          recall "was this vendor flagged / this intent already paid?"
 ```
@@ -63,6 +91,7 @@ through and pays again. That ablation *is* the demo.
 pip install -r requirements.txt
 cp .env.example .env        # optional: Base Sepolia RPC + private key for real settlement
 python -m agent.cli demo    # four-beat safety demo (simulated settlement by default)
+python -m agent.chat        # the real product: talk to the three-agent team
 ```
 
 For real onchain settlement set `BASE_RPC_URL`, `BASE_PRIVATE_KEY` and

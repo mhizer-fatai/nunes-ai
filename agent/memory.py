@@ -11,6 +11,7 @@ from .config import config
 CAT_PAYMENT = "payment"
 CAT_COUNTERPARTY = "counterparty"
 CAT_RULE = "rule"
+CAT_DIRECTIVE = "directive"
 
 STATUS_PAID = "paid"
 STATUS_PENDING = "pending"
@@ -47,6 +48,14 @@ def fmt_amount(units: int, denom: str = "USDC") -> str:
     val = units / dec
     text = f"{val:.6f}".rstrip("0").rstrip(".")
     return f"{text} {denom}"
+
+
+def _actor_tag(actor: str | None) -> tuple[str, dict]:
+    """Prefix label + event extra for journaled actions, so any teammate can
+    see *which agent* made every decision when they recall memory later."""
+    if not actor:
+        return "", {}
+    return f"{actor.upper()} ", {"actor": actor}
 
 
 class MemoryStore:
@@ -158,11 +167,15 @@ class MemoryStore:
 
     def mark_failed(self, key: str, reason: str) -> None:
         """Record a failed attempt (e.g. reverted receipt) so the intent can
-        be retried rather than blocking forever."""
+        be retried rather than blocking forever. Preserves the original claim
+        body (counterparty, amount) so the failed attempt stays attributable."""
+        ent = self.get_entity(CAT_PAYMENT, key)
+        body = dict((ent.get("body") or {}) if ent else {})
+        body.update({"failed_at": now_iso(), "reason": reason})
         self.client.set_entity(
             CAT_PAYMENT,
             key,
-            {"failed_at": now_iso(), "reason": reason},
+            body,
             status=STATUS_FAILED,
         )
         self.write_event(
@@ -171,7 +184,7 @@ class MemoryStore:
         )
 
     def record_paid(self, key: str, counterparty: str, amount: int, denom: str, tx_hash: str,
-                    mode: str = "live") -> None:
+                    mode: str = "live", actor: str | None = None) -> None:
         self.client.set_entity(
             CAT_PAYMENT,
             key,
@@ -185,19 +198,22 @@ class MemoryStore:
             },
             status=STATUS_PAID,
         )
+        tag, extra_actor = _actor_tag(actor)
         self.write_event(
-            acted=[f"PAID {fmt_amount(amount, denom)} to {counterparty} for {key}"],
+            acted=[f"{tag}PAID {fmt_amount(amount, denom)} to {counterparty} for {key}"],
             extra={"kind": "payment", "key": key, "tx_hash": tx_hash,
-                   "mode": mode, "counterparty": counterparty},
+                   "mode": mode, "counterparty": counterparty, **extra_actor},
         )
 
     # -- counterparties (approved / banned) ----------------------------------
 
-    def ban_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (), reason: str = "") -> None:
+    def ban_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (), reason: str = "",
+                         actor: str | None = None) -> None:
         """Ban an address and every alias it is known under, so a banned vendor
         re-emerging under a NEW address but the same alias is still refused."""
         norm = address.lower()
         aliases = [a.lower() for a in aliases]
+        tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(
             CAT_COUNTERPARTY,
             norm,
@@ -212,13 +228,15 @@ class MemoryStore:
                 status=STATUS_BANNED,
             )
         self.write_event(
-            acted=[f"BANNED {address} ({', '.join(aliases) or 'no alias'}): {reason}"],
-            extra={"kind": BAN_KIND, "address": norm, "aliases": aliases, "reason": reason},
+            acted=[f"{tag}BANNED {address} ({', '.join(aliases) or 'no alias'}): {reason}"],
+            extra={"kind": BAN_KIND, "address": norm, "aliases": aliases, "reason": reason, **extra_actor},
         )
 
-    def approve_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (), note: str = "") -> None:
+    def approve_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (), note: str = "",
+                             actor: str | None = None) -> None:
         norm = address.lower()
         aliases = [a.lower() for a in aliases]
+        tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(
             CAT_COUNTERPARTY,
             norm,
@@ -233,8 +251,8 @@ class MemoryStore:
                 status=STATUS_APPROVED,
             )
         self.write_event(
-            acted=[f"APPROVED {address} ({', '.join(aliases) or 'no alias'}): {note}"],
-            extra={"kind": APPROVE_KIND, "address": norm, "aliases": aliases, "note": note},
+            acted=[f"{tag}APPROVED {address} ({', '.join(aliases) or 'no alias'}): {note}"],
+            extra={"kind": APPROVE_KIND, "address": norm, "aliases": aliases, "note": note, **extra_actor},
         )
 
     def counterparty_status(self, address: str, alias: str | None = None) -> tuple[str | None, list[str]]:
@@ -288,6 +306,7 @@ class MemoryStore:
         effective_until: str | None = None,
         max_amount: int,
         denoms: list[str] | tuple[str, ...] = ("USDC",),
+        actor: str | None = None,
     ) -> None:
         """Store a spending rule. Rules are never deleted: obligations are
         judged under the rule that was in force when they were incurred."""
@@ -298,14 +317,15 @@ class MemoryStore:
             "max_amount": max_amount,
             "denoms": list(denoms),
         }
+        tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(CAT_RULE, version, body, status="active")
         self.set_session_policy(version)
         self.write_event(
             acted=[
-                f"RULE {version}: cap {fmt_amount(max_amount)} from {effective_from}"
+                f"{tag}RULE {version}: cap {fmt_amount(max_amount)} from {effective_from}"
                 + (f" until {effective_until}" if effective_until else "")
             ],
-            extra={"kind": "rule", **body},
+            extra={"kind": "rule", **body, **extra_actor},
         )
 
     def rules(self) -> list[dict]:
@@ -330,3 +350,79 @@ class MemoryStore:
             if best is None or parse_ts(best["body"]["effective_from"]) < parse_ts(eff_from):
                 best = {"name": ent.get("name"), "status": ent.get("status"), "body": body}
         return best
+
+    # -- planner directives (cross-agent binding decisions) -------------------
+
+    def set_directive(self, title: str, text: str, *, max_amount: int | None = None,
+                      actor: str | None = None) -> str:
+        """Record a binding planner directive. A directive with a `max_amount`
+        cap binds every future spending rule: Policy may not set a rule with a
+        higher cap while the directive is active.
+
+        The entity name is time-ordered, so agents (and the guard) can always
+        find the latest directive without remembering IDs."""
+        created = now_iso()
+        millis = int(parse_ts(created).timestamp() * 1000)
+        name = f"directive-{millis}"
+        body = {"title": title, "text": text, "max_amount": max_amount, "created": created}
+        tag, extra_actor = _actor_tag(actor)
+        self.client.set_entity(CAT_DIRECTIVE, name, body, status="active")
+        self.write_event(
+            acted=[f"{tag}DIRECTIVE '{title}': {text}"
+                   + (f" (cap {fmt_amount(max_amount)})" if max_amount is not None else "")],
+            extra={"kind": "directive", "directive": name, **body, **extra_actor},
+        )
+        return name
+
+    def directives(self) -> list[dict]:
+        ents = self.client.list_entities(CAT_DIRECTIVE, limit=500)
+        out = [
+            {"name": e.get("name"), "status": e.get("status"), "body": e.get("body") or {}}
+            for e in ents
+        ]
+        out.sort(key=lambda e: str(e["body"].get("created", "")))
+        return out
+
+    def latest_directive(self) -> dict | None:
+        active = [e for e in self.directives() if e.get("status") == "active"]
+        return active[-1] if active else None
+
+    # -- cross-session recall (the agents' shared memory read path) -----------
+
+    def recall(self, query: str, *, limit: int = 20) -> dict:
+        """Everything a teammate needs to know before acting on `query`:
+
+        - exact + fuzzy counterparty status (bans, approvals, alias trail)
+        - the latest spending rule + the latest planner directive
+        - the most relevant journal events mentioning the query
+        """
+        matches = self._fuzzy(query, limit=limit)
+        hits: list[str] = []
+        for item in matches[:limit]:
+            cat = item.get("category")
+            name = item.get("name")
+            status = item.get("status")
+            body = item.get("body") or {}
+            hits.append(f"{cat}/{name} [{status}] {str(body)[:200]}")
+        events: list[str] = []
+        try:
+            for ev in self.read_events(limit=limit * 2):
+                blob = str(ev.get("acted")) + str(ev.get("forward")) + str(ev.get("extra"))
+                if query.lower() in blob.lower():
+                    acted = ev.get("acted")
+                    text = "; ".join(acted) if isinstance(acted, list) else str(acted)
+                    events.append(f"{ev.get('ts')}: {text}")
+        except Exception:
+            pass
+        return {
+            "matches": hits,
+            "events": events[:limit],
+            "latest_rule": self.rules()[-1] if self.rules() else None,
+            "latest_directive": self.latest_directive(),
+        }
+
+    def journal_note(self, actor: str, text: str, **extra) -> None:
+        """Freeform journal entry by an agent - a teammate's reasoning that the
+        next session must be able to read back."""
+        self.write_event(acted=[f"{actor.upper()} NOTE: {text}"],
+                         extra={"kind": "note", "actor": actor, **extra})

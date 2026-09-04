@@ -9,16 +9,19 @@ submission deadline **Sep 10, 23:59 UTC** · judging Sep 11-12 · winners Sep 13
 
 ## 1. What we are building
 
-Nunes AI is an **autonomous financial agent whose memory is its safety control**.
+Nunes AI is a **team of three autonomous agents sharing one memory**.
 
-Two halves:
+| Agent | Job | Tools |
+| --- | --- | --- |
+| **Planner** | Decides who the team does business with: approvals, bans, standing directives | approve/ban vendor, directive, recall |
+| **Policy** | Sets the spending rules payments must obey | set-rule, recall (must fit the planner's directive cap) |
+| **Payments** | Settles obligations on Base (USDC) - and refuses what memory forbids | pay, recall, payment lookup |
 
-| Half | Role |
-| --- | --- |
-| **The agent** | Holds a Base wallet. Receives instructions ("pay this vendor", "settle this invoice") and executes real onchain actions. |
-| **The memory guard** | Sits in front of every action. Consults persistent, exact, append-only Sibyl memory and decides **allow / block** before a single dollar moves. |
-
-The agent cannot execute until the guard recalls the relevant history and accepts.
+Each agent is a real LLM loop with its own role prompt and tool belt; a
+dispatcher routes your instruction to the right teammate. Every decision is
+written to shared Sibyl memory with the agent's name on it, and the guard
+refuses anything that contradicts a teammate's recorded decision - **across
+sessions and restarts**. Delete the memory and the team becomes strangers.
 
 **What Nunes AI is not:** not a chatbot with memory, not a wallet dashboard with an LLM
 bolted on, not a "remembers your preferences" assistant. The memory does not decorate the
@@ -75,31 +78,38 @@ result is for.
 - **Virtuals:** not used - one verified stack (Base) is a x1.15; a decorative second stack
   is worth less than a solid one.
 
-## 6. Build order & status (as of Sep 2)
+## 6. Build order & status (as of Sep 4)
 
 | # | Item | Status |
 | --- | --- | --- |
-| 1 | Sibyl Memory wrapper (5 tiers) | done |
-| 2 | Guard: idempotency / counterparty / temporal rule | done |
+| 1 | Sibyl Memory wrapper (5 tiers) + directives + recall + actor tagging | done |
+| 2 | Guard: idempotency / counterparty / temporal rule + cross-agent governance (ban-approve override, directive cap) | done |
 | 3 | CLI: pay, ban, approve, set-rule, rules, search, events, wipe, demo | done |
 | 4 | Base Sepolia executor (`agent/chain.py`) | done |
 | 5 | `--no-memory` ablation + fresh-process proof | done (ablation now always simulates) |
-| 6 | Tests (`tests/test_guard.py`, 7 passing) | done |
+| 6 | Tests (23 passing: guard, brain, team coordination) | done |
 | 7 | README + docs/demo.md | done |
 | 8 | Live Base Sepolia transaction | **done** - tx `0xa782a891...47441e`, receipt verified on BaseScan |
 | 9 | Safety hardening: pending claim, receipt confirm, chain-id check | done |
-| 10 | 2-5 min demo video + 2 build-in-public posts | **next** |
+| 10 | Real product: 3 LLM agents (planner/policy/payments) + dispatcher + `python -m agent.chat` | **done** - verified live: planner ban -> fresh-session payments refusal |
+| 11 | 2-5 min demo video + 2 build-in-public posts | **next** |
 
 ## 7. Repo layout
 
 ```
 agent/
-  memory.py   Sibyl five-tier wrapper (WARM/COLD/HOT/FTS5)
+  memory.py   Sibyl five-tier wrapper (WARM/COLD/HOT/FTS5) + directives + recall
   policy.py   PayRequest + GuardDecision
-  guard.py    the memory gate + decision journaling
+  guard.py    the memory gate + decision journaling + cross-agent governance
   chain.py    Base settlement (ERC-20 transfer, RPC via urllib)
-  cli.py      demo + ops surface
-tests/test_guard.py
+  brain.py    single-shot LLM intent extraction (legacy `brain` command)
+  llm.py      OpenAI-compatible transport incl. native function calling
+  roles.py    the three agents: prompts, tool belts, dispatcher contract
+  toolkit.py  all agent tools (guarded writes, settlement, recall)
+  runtime.py  the agent loop + dispatcher
+  chat.py     the product: `python -m agent.chat`
+  cli.py      ops surface (pay/ban/rule/search/events/wipe/demo)
+tests/test_guard.py  tests/test_brain.py  tests/test_team.py (23 passing)
 docs/demo.md
 ```
 

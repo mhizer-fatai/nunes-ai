@@ -96,21 +96,38 @@ class BaseChain:
         signed = self.signer.sign_transaction(tx)
         raw_hex = "0x" + signed.raw_transaction.hex()
         hash_hex = str(_rpc("eth_sendRawTransaction", [raw_hex]))
-        if hash_hex.lower() != signed.hash.lower():
+        # signed.hash is a HexBytes (bytes subclass); normalize both sides to a
+        # lowercase 0x-prefixed string before comparing.
+        if isinstance(signed.hash, bytes):
+            local_hex = "0x" + signed.hash.hex()
+        else:
+            local_hex = str(signed.hash)
+        if hash_hex.lower() != local_hex.lower():
             raise RuntimeError(
                 f"RPC returned a different tx hash ({hash_hex}) than the locally "
-                f"signed one ({signed.hash}) - refusing to trust it"
+                f"signed one ({local_hex}) - refusing to trust it"
             )
         return hash_hex, self.wait_for_receipt(hash_hex)
 
     def wait_for_receipt(self, tx_hash: str, timeout: float = 45.0, poll: float = 2.0) -> str:
-        """Poll for the receipt. Returns the receipt status as '1' or '0',
-        or 'pending' if it did not confirm within `timeout` seconds."""
+        """Poll for the receipt. Returns the receipt status normalized to '1'
+        (success), '0' (reverted), or 'pending' if it did not confirm within
+        `timeout` seconds.
+
+        RPC nodes disagree on the status encoding (some return hex '0x1',
+        some decimal-ish '1'), so the raw value is normalized here rather than
+        at the call sites - a raw '0x1' slipping through a `!= '1'` check would
+        mislabel a successful settlement as a revert and allow a double-pay."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             receipt = _rpc("eth_getTransactionReceipt", [tx_hash])
             if receipt:
-                return str(receipt.get("status", "0"))
+                status = str(receipt.get("status", "0"))
+                if status in ("1", "0x1", "0x01"):
+                    return "1"
+                if status in ("0", "0x0", "0x00"):
+                    return "0"
+                return "pending"
             time.sleep(poll)
         return "pending"
 

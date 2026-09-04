@@ -44,6 +44,16 @@ class Config:
             "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
         )
         self.simulate: bool = os.environ.get("NUNES_AI_SIMULATE", "0") == "1"
+        self.llm_api_key: str | None = os.environ.get("INCEPTION_API_KEY") or os.environ.get("LLM_API_KEY")
+        self.llm_base_url: str = os.environ.get(
+            "LLM_BASE_URL",
+            "https://api.inceptionlabs.ai/v1",
+        )
+        self.llm_model: str = os.environ.get("LLM_MODEL", "mercury-2")
+
+    @property
+    def llm_enabled(self) -> bool:
+        return bool(self.llm_api_key)
 
     @property
     def can_execute(self) -> bool:
