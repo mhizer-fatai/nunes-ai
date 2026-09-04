@@ -7,7 +7,7 @@ from .brain import _hash_intent
 from .chain import BaseChain, simulate_transfer
 from .config import config
 from .guard import Guard, cid_key
-from .memory import CAT_PAYMENT, MemoryStore, fmt_amount, now_iso, parse_ts
+from .memory import CAT_PAYMENT, BadAddress, MemoryStore, fmt_amount, normalize_address, now_iso, parse_ts
 from .policy import PayRequest
 
 USDC_DECIMALS = 10 ** 6
@@ -214,6 +214,37 @@ def t_set_rule(ctx: ActorCtx, args: dict) -> str:
     return f"RULE {version} set: cap {fmt_amount(units)} from {eff_from}. Written to shared memory."
 
 
+def resolve_broadcast_recipient(ctx: ActorCtx, to: str, alias: str | None) -> tuple[str | None, str | None]:
+    """Decide the address a payment would actually broadcast to.
+
+    Returns (canonical_address, refusal). The canonical address always comes
+    from the vendor directory in shared memory when a record matches - the
+    LLM's transcription is never trusted for the broadcast. A malformed
+    address is refused outright. In live mode with memory present, an
+    unregistered recipient is refused until a planner registers it; in
+    simulation (or with memory deleted) the validated address passes through
+    so tests and the ablation contrast keep working.
+    """
+    try:
+        normalized = normalize_address(to)
+    except BadAddress:
+        return None, f"refused: '{to}' is not a well-formed 0x address."
+    memory = ctx.memory
+    live_ready = config.can_execute and not config.simulate
+    if memory is None:
+        return normalized, None
+    registered = memory.resolve_counterparty(to, alias=alias)
+    if registered is not None:
+        return registered, None
+    if live_ready and config.require_registered:
+        return None, (
+            f"refused: {normalized} is not a registered vendor in shared memory. "
+            f"Live settlement only pays addresses a planner has registered - "
+            f"ask the planner to register this vendor first, then retry."
+        )
+    return normalized, None
+
+
 def t_pay(ctx: ActorCtx, args: dict) -> str:
     """The guarded settlement path. Mirrors the cli pay flow exactly:
     guard -> (ablation: simulate only) -> claim -> broadcast -> receipt ->
@@ -233,9 +264,19 @@ def t_pay(ctx: ActorCtx, args: dict) -> str:
     if not invoice_ref:
         return "error: pay needs 'invoice_ref' - the obligation's stable reference."
 
+    recipient, refusal = resolve_broadcast_recipient(ctx, to, alias)
+    if refusal is not None or recipient is None:
+        memory = ctx.memory
+        if memory is not None:
+            memory.write_event(
+                acted=[f"{ctx.actor.upper()} BLOCKED payment to {to}: {refusal}"],
+                extra={"kind": "recipient-block", "actor": ctx.actor, "to": to},
+            )
+        return f"BLOCKED: {refusal}"
+
     memory = ctx.memory
-    intent_id = _hash_intent(invoice_ref.lower(), to=to, amount_units=units, denom="USDC")
-    req = PayRequest(intent_id=intent_id, counterparty=to, amount=units,
+    intent_id = _hash_intent(invoice_ref.lower(), to=recipient, amount_units=units, denom="USDC")
+    req = PayRequest(intent_id=intent_id, counterparty=recipient, amount=units,
                      denom="USDC", alias=alias, incurred_at=now_iso())
     guard = Guard(memory)
     decision = guard.check(req)
@@ -402,7 +443,7 @@ TOOLS: dict[str, dict] = {
         "run": t_vendor_status,
     },
     "approve_vendor": {
-        "description": "Approve a vendor (planner). Refused if the vendor is banned unless override=true. Args: {address: str, aliases?: [str], note?: str, override?: bool}",
+        "description": "Register a vendor's exact address in the vendor directory and approve it (planner). The stored address becomes the source of truth for future payments. Refused if the vendor is banned unless override=true. Args: {address: str, aliases?: [str], note?: str, override?: bool}",
         "run": t_approve_vendor,
     },
     "ban_vendor": {
@@ -426,7 +467,7 @@ TOOLS: dict[str, dict] = {
         "run": t_set_rule,
     },
     "pay": {
-        "description": "Settle a payment on Base USDC through the memory guard. Args: {to: str, amount_usdc: number, invoice_ref: str, alias?: str}",
+        "description": "Settle a payment on Base USDC through the memory guard. The broadcast address is resolved from the vendor directory in memory (registered address or alias), never transcribed. Live mode refuses unregistered recipients. Args: {to: str, amount_usdc: number, invoice_ref: str, alias?: str}",
         "run": t_pay,
     },
     "payment_lookup": {

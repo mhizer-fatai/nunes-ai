@@ -50,6 +50,26 @@ def fmt_amount(units: int, denom: str = "USDC") -> str:
     return f"{text} {denom}"
 
 
+class BadAddress(ValueError):
+    """Raised when a purported 0x address is not a well-formed 40-hex address."""
+
+
+def normalize_address(value: str) -> str:
+    """Validate and normalize an EVM address to lowercase.
+
+    Fails fast on anything that is not exactly 0x + 40 hex chars, so a
+    corrupted or truncated address can never become a standing record or a
+    broadcast target.
+    """
+    text = (value or "").strip()
+    if len(text) != 42 or not text.startswith("0x"):
+        raise BadAddress(f"not a 0x address: {value!r}")
+    try:
+        return "0x" + bytes.fromhex(text[2:]).hex()
+    except ValueError:
+        raise BadAddress(f"not a 0x address: {value!r}") from None
+
+
 def _actor_tag(actor: str | None) -> tuple[str, dict]:
     """Prefix label + event extra for journaled actions, so any teammate can
     see *which agent* made every decision when they recall memory later."""
@@ -211,7 +231,7 @@ class MemoryStore:
                          actor: str | None = None) -> None:
         """Ban an address and every alias it is known under, so a banned vendor
         re-emerging under a NEW address but the same alias is still refused."""
-        norm = address.lower()
+        norm = normalize_address(address)
         aliases = [a.lower() for a in aliases]
         tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(
@@ -234,7 +254,7 @@ class MemoryStore:
 
     def approve_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (), note: str = "",
                              actor: str | None = None) -> None:
-        norm = address.lower()
+        norm = normalize_address(address)
         aliases = [a.lower() for a in aliases]
         tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(
@@ -295,6 +315,35 @@ class MemoryStore:
                         return status, evidence
 
         return None, evidence
+
+    def resolve_counterparty(self, address: str | None, alias: str | None = None) -> str | None:
+        """Resolve a payment recipient to the canonical address stored in the
+        vendor directory (shared memory).
+
+        Returns the registered lowercase address, or None when neither the
+        address nor the alias matches a standing counterparty record. When
+        nothing is registered, nothing is trusted: the caller must refuse a
+        live broadcast rather than transcribe a fresh address.
+        """
+        candidates: list[str] = []
+        if address:
+            try:
+                candidates.append(normalize_address(address))
+            except BadAddress:
+                pass
+        if alias:
+            candidates.append(alias.strip().lower())
+        for cand in candidates:
+            ent = self.get_entity(CAT_COUNTERPARTY, cand)
+            if ent is not None:
+                body = ent.get("body") or {}
+                canonical = body.get("address")
+                if canonical:
+                    try:
+                        return normalize_address(str(canonical))
+                    except BadAddress:
+                        continue
+        return None
 
     # -- spending rules (temporal recall) ------------------------------------
 

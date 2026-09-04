@@ -10,7 +10,7 @@ from agent.memory import MemoryStore
 from agent.runtime import route, run_agent
 from agent.toolkit import ActorCtx, t_pay
 
-VENDOR = "0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B"
+VENDOR = "0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3"
 BAD = "0x7b8Bca2C6c59fB7E5e96d7f1E1e5C5a0a6b1B222"
 EVIL = "0x9a1B2C3d4E5f60718293A4b5C6d7E8F9a0b1C2D3"
 DEC = 10 ** 6
@@ -185,3 +185,61 @@ def test_guard_governance_allows_uncontested_writes(seeded: str) -> None:
     g = Guard(MemoryStore(seeded))
     assert g.decide_vendor_change(VENDOR, target="approve").allowed
     assert g.decide_rule(5 * DEC, version="v2").allowed
+
+
+def test_bad_addresses_rejected_everywhere(seeded: str) -> None:
+    from agent.memory import BadAddress, normalize_address
+    with pytest.raises(BadAddress):
+        normalize_address("0x1234")
+    with pytest.raises(BadAddress):
+        normalize_address("not-an-address")
+    assert normalize_address(VENDOR) == VENDOR.lower()
+
+    from agent.toolkit import t_approve_vendor, t_ban_vendor, t_pay
+    with pytest.raises(BadAddress):
+        t_ban_vendor(_ctx(seeded, roles.PLANNER), {"address": "0xzzz"})
+    blocked = t_pay(_ctx(seeded, roles.PAYMENTS),
+                    {"to": "0x1234", "amount_usdc": 1, "invoice_ref": "inv-bad"})
+    assert blocked.startswith("BLOCKED")
+    assert "well-formed" in blocked
+
+
+def test_broadcast_uses_registered_address_not_transcription(seeded: str) -> None:
+    """Planner registers an address; the payment resolves the canonical
+    address from memory even when the caller passes a different-case copy."""
+    from agent.toolkit import t_approve_vendor, t_pay
+    mixed = "0x8F42B6A2C9D5F2A1B7C3E5D9F0A2B6C4D8E1F2A3"
+    res = t_approve_vendor(_ctx(seeded, roles.PLANNER),
+                           {"address": mixed, "aliases": ["acme"], "note": "audited"})
+    assert res.startswith("APPROVED")
+
+    out = t_pay(_ctx(seeded, roles.PAYMENTS),
+                {"to": mixed, "amount_usdc": 1, "invoice_ref": "invoice-dir", "alias": "acme"})
+    assert out.startswith("PAID")
+    m = MemoryStore(seeded)
+    found = [e for e in m.list_entities("payment", limit=100)
+             if (e.get("body") or {}).get("counterparty") == VENDOR.lower()]
+    assert found, "payment must be journaled under the canonical registered address"
+
+
+def test_live_refuses_unregistered_vendor(seeded: str, monkeypatch) -> None:
+    """Real money only moves to directory addresses: an unregistered vendor
+    is refused in live mode until a planner registers it."""
+    from agent.toolkit import t_approve_vendor, t_pay
+    monkeypatch.setattr(config, "rpc_url", "https://sepolia.base.org")
+    monkeypatch.setattr(config, "private_key", "0x" + "1" * 64)
+    monkeypatch.setattr(config, "simulate", False)
+    monkeypatch.setattr(config, "require_registered", True)
+
+    refused = t_pay(_ctx(seeded, roles.PAYMENTS),
+                    {"to": EVIL, "amount_usdc": 1, "invoice_ref": "invoice-new"})
+    assert refused.startswith("BLOCKED")
+    assert "not a registered vendor" in refused
+
+    t_approve_vendor(_ctx(seeded, roles.PLANNER),
+                     {"address": EVIL, "note": "registered"})
+    # Registration alone does not approve a payment: the guard still applies,
+    # and BaseChain is never touched in tests - stop at resolution.
+    from agent.toolkit import resolve_broadcast_recipient
+    addr, refusal = resolve_broadcast_recipient(_ctx(seeded, roles.PAYMENTS), EVIL, None)
+    assert refusal is None and addr == EVIL.lower()

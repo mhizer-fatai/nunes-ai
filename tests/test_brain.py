@@ -5,7 +5,7 @@ import pytest
 from agent.brain import Brain, BrainError, BrainUnavailable, _hash_intent
 from agent.config import config
 
-VENDOR = "0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B"
+VENDOR = "0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3"
 
 
 @pytest.fixture()
