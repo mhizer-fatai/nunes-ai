@@ -131,7 +131,9 @@ def route(task: str, *, complete_fn=complete) -> dict:
     """Dispatch one user request to a role. Returns {"role": str|None, "ask": str}.
 
     An LLM dispatcher decides; a deterministic keyword fallback keeps the team
-    usable when the model reply is unusable.
+    usable when the model reply is unusable. When nothing routes, the
+    clarification is always our own text naming the three teammates - never
+    the model's free-text ask, which reads as a bland canned reply.
     """
     try:
         raw = complete_fn([
@@ -142,8 +144,6 @@ def route(task: str, *, complete_fn=complete) -> dict:
         role = data.get("role")
         if role in roles.ROLE_ORDER:
             return {"role": role, "ask": ""}
-        if role is None and data.get("ask"):
-            return {"role": None, "ask": str(data["ask"])}
     except LLMError:
         pass
     low = task.lower()
@@ -157,5 +157,8 @@ def route(task: str, *, complete_fn=complete) -> dict:
     }
     best = max(scores, key=lambda k: scores[k])
     if scores[best] == 0:
-        return {"role": None, "ask": "Which teammate should take this - planner (vendors), policy (spending rules), or payments?"}
+        return {"role": None, "ask": (
+            "I can send you to the right teammate - planner (vendors, bans), "
+            "policy (spending rules), or payments (pay an invoice). "
+            "Try: 'ban vendor …', 'set a rule …', or 'pay …'.")}
     return {"role": best, "ask": ""}
