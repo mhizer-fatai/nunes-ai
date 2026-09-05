@@ -15,6 +15,11 @@ dist/
 build/
 artifacts/
 
+# Next.js frontend (ui/) - never commit installs or build output
+node_modules/
+.next/
+out/
+
 # Logs
 *.log
 
