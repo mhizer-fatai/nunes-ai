@@ -6,82 +6,82 @@
 
 :root,
 [data-theme="light"] {
-  --bg: #f6f7fb;
-  --bg-tint: radial-gradient(1200px 600px at 15% -10%, #e8ebff 0%, transparent 60%),
-             radial-gradient(900px 500px at 95% 0%, #e2fbef 0%, transparent 55%);
+  --bg: #f5f8fd;
+  --bg-tint: radial-gradient(1200px 600px at 15% -10%, #dbe6ff 0%, transparent 60%),
+             radial-gradient(900px 500px at 95% 0%, #d9f6ea 0%, transparent 55%);
   --surface: #ffffff;
-  --surface-2: #f2f4f9;
-  --surface-3: #e9edf5;
+  --surface-2: #eef2fa;
+  --surface-3: #e0e7f5;
   --glass: rgba(255, 255, 255, 0.72);
-  --glass-line: rgba(15, 20, 36, 0.08);
+  --glass-line: rgba(0, 46, 138, 0.10);
 
-  --ink: #0d1220;
-  --ink-2: #3b4560;
-  --ink-3: #6c7690;
-  --line: #e3e7f0;
-  --line-2: #cfd6e6;
+  --ink: #0a1730;
+  --ink-2: #33415e;
+  --ink-3: #68768f;
+  --line: #dfe6f2;
+  --line-2: #c3cfe6;
 
-  --primary: #4f46e5;
-  --primary-2: #6d5ef5;
+  --primary: #0052ff;
+  --primary-2: #3e7bff;
   --primary-ink: #ffffff;
-  --primary-soft: #eceaff;
-  --primary-line: rgba(79, 70, 229, 0.22);
+  --primary-soft: #e3ecff;
+  --primary-line: rgba(0, 82, 255, 0.25);
 
   --green: #0b7a52;
   --green-soft: #e2f7ee;
-  --green-line: rgba(11, 122, 82, 0.22);
+  --green-line: rgba(11, 122, 82, 0.25);
   --red: #b42318;
   --red-soft: #fdeceb;
-  --red-line: rgba(180, 35, 24, 0.22);
+  --red-line: rgba(180, 35, 24, 0.25);
   --teal: #0e7490;
   --teal-soft: #e0f5fa;
   --violet: #6d28d9;
   --violet-soft: #f0e9ff;
 
-  --shadow-1: 0 1px 2px rgba(13, 18, 32, 0.05), 0 4px 16px rgba(13, 18, 32, 0.05);
-  --shadow-2: 0 12px 40px rgba(13, 18, 32, 0.10);
-  --glow: 0 0 0 1px var(--primary-line), 0 10px 32px rgba(79, 70, 229, 0.16);
-  --grid-dot: rgba(13, 18, 32, 0.055);
+  --shadow-1: 0 1px 2px rgba(10, 23, 48, 0.06), 0 4px 16px rgba(10, 23, 48, 0.06);
+  --shadow-2: 0 12px 40px rgba(10, 23, 48, 0.12);
+  --glow: 0 0 0 1px var(--primary-line), 0 10px 32px rgba(0, 82, 255, 0.18);
+  --grid-dot: rgba(10, 23, 48, 0.06);
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --bg: #0a0f1e;
-  --bg-tint: radial-gradient(1200px 600px at 15% -10%, rgba(99, 102, 241, 0.16) 0%, transparent 60%),
-             radial-gradient(900px 500px at 95% 0%, rgba(78, 222, 163, 0.10) 0%, transparent 55%);
-  --surface: #131a2c;
-  --surface-2: #1a2236;
-  --surface-3: #232c42;
-  --glass: rgba(19, 26, 44, 0.72);
+  --bg: #060b18;
+  --bg-tint: radial-gradient(1200px 600px at 15% -10%, rgba(0, 82, 255, 0.22) 0%, transparent 60%),
+             radial-gradient(900px 500px at 95% 0%, rgba(78, 222, 163, 0.12) 0%, transparent 55%);
+  --surface: #0d1526;
+  --surface-2: #131c31;
+  --surface-3: #1b2540;
+  --glass: rgba(13, 21, 38, 0.72);
   --glass-line: rgba(255, 255, 255, 0.09);
 
-  --ink: #e7eaf8;
-  --ink-2: #b6bdd4;
-  --ink-3: #8b93ad;
-  --line: #2a3247;
-  --line-2: #3a445e;
+  --ink: #e8edf7;
+  --ink-2: #aeb8d2;
+  --ink-3: #7f89a3;
+  --line: #22304d;
+  --line-2: #334164;
 
-  --primary: #a5a8ff;
-  --primary-2: #8083ff;
-  --primary-ink: #0d0096;
-  --primary-soft: rgba(128, 131, 255, 0.16);
-  --primary-line: rgba(165, 168, 255, 0.28);
+  --primary: #5b8cff;
+  --primary-2: #8fb0ff;
+  --primary-ink: #061a4d;
+  --primary-soft: rgba(91, 140, 255, 0.16);
+  --primary-line: rgba(91, 140, 255, 0.32);
 
   --green: #4edea3;
   --green-soft: rgba(78, 222, 163, 0.13);
-  --green-line: rgba(78, 222, 163, 0.28);
+  --green-line: rgba(78, 222, 163, 0.3);
   --red: #ff8f86;
   --red-soft: rgba(255, 84, 81, 0.13);
-  --red-line: rgba(255, 84, 81, 0.3);
+  --red-line: rgba(255, 84, 81, 0.32);
   --teal: #5eead4;
   --teal-soft: rgba(94, 234, 212, 0.13);
-  --violet: #c0b6ff;
-  --violet-soft: rgba(139, 122, 255, 0.16);
+  --violet: #c4aaff;
+  --violet-soft: rgba(139, 122, 255, 0.18);
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.3);
   --shadow-2: 0 16px 48px rgba(0, 0, 0, 0.5);
-  --glow: 0 0 0 1px var(--primary-line), 0 10px 32px rgba(128, 131, 255, 0.2);
-  --grid-dot: rgba(231, 234, 248, 0.06);
+  --glow: 0 0 0 1px var(--primary-line), 0 10px 32px rgba(0, 82, 255, 0.3);
+  --grid-dot: rgba(232, 237, 247, 0.06);
   color-scheme: dark;
 }
 
@@ -630,6 +630,51 @@ a { color: inherit; }
   border: 1px solid var(--red-line); border-radius: 11px;
   padding: 10px 13px; font-size: 13.5px;
 }
+
+/* ==========================================================================
+   Guided demo
+   ========================================================================== */
+
+.demo-beats { display: flex; flex-direction: column; gap: 20px; }
+
+.beat {
+  padding: 26px 28px;
+  opacity: 0.55;
+  transition: opacity 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+.beat.active { opacity: 1; border-color: var(--primary-line); box-shadow: var(--shadow-2); }
+.beat.done { opacity: 1; }
+
+.beat-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.beat-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+  color: var(--primary-ink); background: var(--primary);
+  padding: 4px 10px; border-radius: 7px;
+}
+.beat h3 { font-size: 20px; }
+.beat .script { color: var(--ink-2); font-size: 15px; max-width: 72ch; margin: 10px 0 16px; }
+.beat .script code {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  padding: 2px 8px; border-radius: 6px; color: var(--ink);
+}
+
+.beat-result {
+  border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface-2); padding: 16px 18px;
+  font-size: 14.5px; white-space: pre-wrap;
+  animation: msgIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.beat-result .who {
+  display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.07em;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 6px; margin-bottom: 8px;
+}
+.beat-result.planner .who { background: var(--violet-soft); color: var(--violet); }
+.beat-result.payments .who { background: var(--green-soft); color: var(--green); }
+.beat-result.system .who { background: var(--surface-3); color: var(--ink-3); }
+
+.beat-actions { display: flex; gap: 10px; margin-top: 16px; }
 
 /* ==========================================================================
    Scroll reveal

@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: "#team", label: "Agents" },
   { href: "#proof", label: "Proof" },
   { href: "#live", label: "Live" },
+  { href: "/demo", label: "Demo" },
 ];
 
 const CAUSES = [
