@@ -1,24 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import Nav from "../components/Nav";
+import { ScrollProgress } from "../components/Motion";
 import ChatPanel from "../components/ChatPanel";
 import JournalPanel from "../components/JournalPanel";
 import AblationPanel from "../components/AblationPanel";
 
-export default function Home() {
+export default function AppScreen() {
   const [status, setStatus] = useState(null);
-  const [journalTick, setJournalTick] = useState(0);
-  const refreshJournal = useCallback(() => setJournalTick((t) => t + 1), []);
+  const [tick, setTick] = useState(0);
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
         const res = await fetch("/api/status");
-        if (res.ok) {
-          const data = await res.json();
-          if (alive) setStatus(data);
-        }
+        if (!res.ok) throw new Error("status " + res.status);
+        const data = await res.json();
+        if (alive) setStatus(data);
       } catch {
         if (alive) setStatus({ offline: true });
       }
@@ -31,33 +33,43 @@ export default function Home() {
     };
   }, []);
 
-  const chainLabel = !status
-    ? "…"
-    : status.offline
-      ? "unreachable"
-      : status.chain;
+  const memOk = status && !status.offline;
+  const live = memOk && String(status.chain || "").startsWith("live");
 
   return (
     <>
-      <header>
-        <div className="brand">
-          Nunes <span>AI</span>
-        </div>
-        <div className="tagline">Three agents. One shared memory. No contradictions.</div>
-        <div className="pills">
-          <span className="pill" title={status && status.memory ? status.memory : ""}>
-            memory: {status ? (status.offline ? "unreachable" : "connected") : "…"}
+      <ScrollProgress />
+      <Nav
+        cta={
+          <Link className="btn btn-ghost btn-sm" href="/">
+            Overview
+          </Link>
+        }
+      />
+      <div className="wrap">
+        <div className="app-bar">
+          <h1>Team workspace</h1>
+          <div className="spacer" />
+          <span
+            className={"pill " + (memOk ? "ok" : "warn")}
+            title={memOk ? status.memory : "backend unreachable"}
+          >
+            <span className="dot" />
+            {memOk ? "shared memory connected" : "memory unreachable"}
           </span>
-          <span className="pill">chain: {chainLabel}</span>
+          <span className={"pill " + (live ? "ok" : "")}>
+            <span className="dot" />
+            {status ? (status.offline ? "chain unknown" : status.chain) : "…"}
+          </span>
         </div>
-      </header>
-      <main>
-        <ChatPanel onAnswered={refreshJournal} />
-        <div className="side">
-          <JournalPanel tick={journalTick} />
-          <AblationPanel />
+        <div className="app-main">
+          <ChatPanel onAnswered={refresh} />
+          <div className="side-col">
+            <JournalPanel tick={tick} />
+            <AblationPanel />
+          </div>
         </div>
-      </main>
+      </div>
     </>
   );
 }

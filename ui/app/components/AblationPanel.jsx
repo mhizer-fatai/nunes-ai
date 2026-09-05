@@ -17,7 +17,9 @@ export default function AblationPanel() {
         body: JSON.stringify({ trials: 1 }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((data.error && data.error.message) || `request failed: ${res.status}`);
+      if (!res.ok) {
+        throw new Error((data.error && data.error.message) || "request failed: " + res.status);
+      }
       setResult(data);
     } catch (e) {
       setError(e.message);
@@ -27,47 +29,55 @@ export default function AblationPanel() {
   }
 
   return (
-    <section className="card" id="ablation-card" aria-label="Deletion test">
-      <h2>Deletion test</h2>
-      <div className="body">
-        <p>Same obligations, memory on vs memory deleted. Re-runs the experiment live:</p>
-        <div id="ablation-result">
-          {!result && !running && !error && (
-            <span className="empty">Not run yet in this session.</span>
-          )}
-          {running && <span className="shimmer">Running with-memory vs without-memory arms…</span>}
-          {error && <div className="toast">Deletion test failed: {error}</div>}
-          {result && (
-            <>
-              <div className="stat good">
-                With memory: {result.withBlocked}/{result.withTotal} harmful payments blocked
-                <div className="proof-bar">
-                  <div
-                    className="proof-fill good"
-                    style={{ width: (100 * result.withBlocked) / Math.max(1, result.withTotal) + "%" }}
-                  />
-                </div>
+    <section className="panel" aria-label="Deletion test">
+      <div className="panel-head">
+        <h2>Deletion test</h2>
+      </div>
+      <div className="ablation-body">
+        <p>
+          Runs the same obligations twice — once with shared memory, once with it deleted — on a
+          throwaway database. Your live memory is never touched.
+        </p>
+
+        {error && <div className="toast">Deletion test failed: {error}</div>}
+
+        {!result && !running && !error && (
+          <div className="empty" style={{ padding: "10px 0" }}>
+            Not run yet in this session.
+          </div>
+        )}
+
+        {running && (
+          <div className="mini-stat">
+            <span className="shimmer">Running with-memory vs without-memory arms…</span>
+          </div>
+        )}
+
+        {result && !running && (
+          <>
+            <div className="mini-stat good">
+              <div className="num">
+                {result.withBlocked} / {result.withTotal}
               </div>
-              <div className="stat bad">
-                Without: {result.withoutAllowed}/{result.withoutTotal} sail through
-                <div className="proof-bar">
-                  <div
-                    className="proof-fill bad"
-                    style={{ width: (100 * result.withoutAllowed) / Math.max(1, result.withoutTotal) + "%" }}
-                  />
-                </div>
+              harmful payments blocked with memory
+            </div>
+            <div className="mini-stat bad">
+              <div className="num">
+                {result.withoutAllowed} / {result.withoutTotal}
               </div>
-              <div>
-                Blocked by category:{" "}
-                {Object.entries(result.byCategory || {})
-                  .map(([k, v]) => `${k} ${v}`)
-                  .join(" · ")}
-              </div>
-            </>
-          )}
-        </div>
-        <button type="button" onClick={run} disabled={running}>
-          {running ? "Running…" : "Run the deletion test"}
+              sail through with memory deleted
+            </div>
+            <div className="cats">
+              Blocked by category:{" "}
+              {Object.entries(result.byCategory || {})
+                .map(([k, v]) => `${k} ${v}`)
+                .join(" · ")}
+            </div>
+          </>
+        )}
+
+        <button className="btn btn-ghost" type="button" onClick={run} disabled={running}>
+          {running ? "Running…" : result ? "Run it again" : "Run the deletion test"}
         </button>
       </div>
     </section>

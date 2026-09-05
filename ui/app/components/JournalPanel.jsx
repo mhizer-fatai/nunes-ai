@@ -2,14 +2,24 @@
 
 import { useEffect, useState } from "react";
 
-function shortAddr(text) {
-  return String(text || "").replace(/0x[0-9a-fA-F]{40}/g, (m) => m.slice(0, 6) + "…" + m.slice(-4));
-}
-
 function fmtTs(ts) {
   if (!ts) return "";
   const d = new Date(ts);
-  return isNaN(d) ? ts : d.toLocaleString();
+  if (isNaN(d)) return ts;
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function rich(text) {
+  const parts = String(text || "").split(/(0x[0-9a-fA-F]{6,})/g);
+  return parts.map((p, i) =>
+    /^0x[0-9a-fA-F]{6,}$/.test(p) ? (
+      <span className="mono" key={i} title={p}>
+        {p.length > 14 ? p.slice(0, 6) + "…" + p.slice(-4) : p}
+      </span>
+    ) : (
+      <span key={i}>{p}</span>
+    )
+  );
 }
 
 export default function JournalPanel({ tick }) {
@@ -40,27 +50,31 @@ export default function JournalPanel({ tick }) {
   }, [tick]);
 
   return (
-    <section className="card" aria-label="Shared memory">
-      <h2>Shared memory — the notebook</h2>
-      <div id="journal-log">
+    <section className="panel" aria-label="Shared memory journal">
+      <div className="panel-head">
+        <h2>Shared memory</h2>
+        <span className="spacer" />
+        <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+          {events ? events.length + " records" : "…"}
+        </span>
+      </div>
+      <div className="journal-log">
         {error && <div className="toast">Journal unreachable: {error}</div>}
-        {!error && events === null && (
-          <div className="empty">Loading the notebook…</div>
-        )}
+        {!error && events === null && <div className="empty">Reading the notebook…</div>}
         {!error && events && events.length === 0 && (
           <div className="empty">
-            No decisions recorded yet — talk to the team and watch this notebook fill.
+            Nothing recorded yet. Talk to the team and every decision appears here — permanently.
           </div>
         )}
         {(events || []).map((ev, i) => (
-          <div className={"entry " + (ev.kind || "")} key={i}>
-            <div className="meta">
+          <div className="entry" key={i} style={{ animationDelay: Math.min(i, 8) * 30 + "ms" }}>
+            <div className="entry-meta">
               {ev.kind && <span className={"chip " + ev.kind}>{ev.kind}</span>}
-              {ev.actor && <span>{ev.actor}</span>}
-              {ev.ts && <span>{fmtTs(ev.ts)}</span>}
+              {ev.actor && <span className="who">{ev.actor}</span>}
+              <span className="when">{fmtTs(ev.ts)}</span>
             </div>
-            <div>
-              {shortAddr(ev.text)}
+            <div className="entry-body">
+              {rich(ev.text)}
               {ev.txUrl && (
                 <>
                   {" "}

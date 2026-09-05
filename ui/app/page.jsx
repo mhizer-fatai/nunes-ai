@@ -1,4 +1,14 @@
 import Link from "next/link";
+import Nav from "./components/Nav";
+import { Reveal, ScrollProgress } from "./components/Motion";
+
+const NAV_LINKS = [
+  { href: "#problem", label: "Problem" },
+  { href: "#solution", label: "Solution" },
+  { href: "#team", label: "Agents" },
+  { href: "#proof", label: "Proof" },
+  { href: "#live", label: "Live" },
+];
 
 const CAUSES = [
   {
@@ -87,10 +97,40 @@ const CAUSES = [
   },
 ];
 
+const AGENTS = [
+  {
+    key: "planner",
+    role: "Planner",
+    title: "Decides who to trust",
+    body: "Bans scammers, approves vendors, and writes standing directives the whole team must obey — every verdict signed with its name.",
+    bullets: ["Ban with alias trail", "Register vendor addresses", "Directives that cap the team"],
+  },
+  {
+    key: "policy",
+    role: "Policy",
+    title: "Sets the spending rules",
+    body: "Caps and effective dates. Every payment is judged under the rule that was in force when the obligation was incurred — not today's rule.",
+    bullets: ["Dated, versioned rules", "Cannot exceed a directive", "Temporal recall"],
+  },
+  {
+    key: "payments",
+    role: "Payments",
+    title: "Moves the money",
+    body: "Settles USDC on Base and buys x402 paywalls — and refuses whatever memory forbids, quoting the record back at you.",
+    bullets: ["Real USDC on Base", "Memory-gated x402", "Refuses before signing"],
+  },
+];
+
 const TXS = [
   { hash: "0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e", label: "USDC transfer" },
   { hash: "0x15274fda7af3cf75bd3b98ed073208a8564fe78ee0ea4611439efcbda58ba15c", label: "agent payment" },
   { hash: "0x7cf2cb70f40b251281ce2626c1f104ebeb095045b113552a71ede2f514c8a537", label: "x402 purchase" },
+];
+
+const STEPS = [
+  { n: "01", t: "Decide once", d: "Planner bans a scammer, Policy caps spending, Payments settles — and every decision is written to shared memory with the agent's name on it." },
+  { n: "02", t: "Recall always", d: "Before a dollar moves: already paid? banned — exactly, by alias, or fuzzy over the journal? which rule was in force? No recall, no payment." },
+  { n: "03", t: "Refuse or pay", d: "A deterministic guard disposes what the model proposes. Replays, bans and over-cap demands are refused with evidence — the signature is never created." },
 ];
 
 function short(h) {
@@ -100,158 +140,237 @@ function short(h) {
 export default function Landing() {
   return (
     <>
-      <header>
-        <div className="brand">
-          Nunes <span>AI</span>
-        </div>
-        <nav className="links">
-          <a href="#problem">Problem</a>
-          <a href="#solution">Solution</a>
-          <a href="#proof">Proof</a>
-          <a href="#live">Live</a>
-          <Link href="/app">Agents</Link>
-        </nav>
-        <div className="pills">
-          <Link className="pill" href="/app" style={{ textDecoration: "none" }}>
+      <ScrollProgress />
+      <Nav
+        links={NAV_LINKS}
+        cta={
+          <Link className="btn btn-primary btn-sm" href="/app">
             Launch app
           </Link>
-        </div>
-      </header>
+        }
+      />
 
       <section className="hero">
-        <h1>
-          Three agents. One shared memory. <span className="grad">No contradictions.</span>
-        </h1>
-        <p>
-          Nunes AI is a finance team of AI agents — Planner, Policy, Payments — that moves real
-          USDC on Base under rules it cannot forget. Every ban, cap and payment is written to one
-          shared memory, and memory refuses whatever contradicts it.
-        </p>
-        <div className="cta-row">
-          <Link className="btn-primary" href="/app">
-            Talk to the team
-          </Link>
-          <a className="btn-ghost" href="#proof">
-            See the deletion test
-          </a>
-        </div>
-      </section>
-
-      <section className="band" id="problem">
-        <h2 style={{ fontSize: 18 }}>The problem: agents got wallets, but no memory</h2>
-        <p style={{ color: "var(--ink-dim)", fontSize: 15, maxWidth: 760 }}>
-          The agent economy gave AI agents the power to move money — without any memory of their
-          own financial decisions. Every session starts as a stranger holding your wallet. Real
-          money has already been lost, and the losses trace back to three root causes:
-        </p>
-        <div className="causes">
-          {CAUSES.map((c) => (
-            <div className={"cause" + (c.verdict.kind === "honest" ? " scope" : "")} key={c.n}>
-              <div className="n">{c.n}</div>
-              <h3>{c.title}</h3>
-              <p className="mech">{c.mech}</p>
-              {c.incidents.map((inc) => (
-                <div className="incident" key={inc.label}>
-                  <span className="amt">{inc.amt}</span>
-                  <span className="what">
-                    {inc.what}{" "}
-                    <a href={inc.src} target="_blank" rel="noopener">
-                      {inc.label} ↗
-                    </a>
-                  </span>
-                </div>
-              ))}
-              <div className={"verdict " + c.verdict.kind}>
-                <span className="tag">{c.verdict.tag}</span>
-                <span>{c.verdict.text}</span>
+        <div className="hero-grid" aria-hidden="true" />
+        <div className="wrap">
+          <Reveal>
+            <span className="pill" style={{ marginBottom: 22 }}>
+              <span className="dot" /> Sibyl Labs Hackathon 2026 · live on Base
+            </span>
+          </Reveal>
+          <Reveal delay={60}>
+            <h1>
+              Three agents. One shared memory.{" "}
+              <span className="grad">No contradictions.</span>
+            </h1>
+          </Reveal>
+          <Reveal delay={120}>
+            <p className="hero-lede">
+              Nunes AI is a finance team of AI agents that moves real USDC on Base under rules it
+              cannot forget. Every ban, cap and payment is written to one shared memory — and
+              memory refuses whatever contradicts it, in any future session.
+            </p>
+          </Reveal>
+          <Reveal delay={180}>
+            <div className="cta-row">
+              <Link className="btn btn-primary" href="/app">
+                Talk to the team →
+              </Link>
+              <a className="btn btn-ghost" href="#proof">
+                See the deletion test
+              </a>
+            </div>
+          </Reveal>
+          <Reveal delay={240}>
+            <div className="hero-meta">
+              <div>
+                <b>160/160</b> harmful payments blocked
+              </div>
+              <div>
+                <b>0/160</b> blocked without memory
+              </div>
+              <div>
+                <b>3</b> live transactions on Base
+              </div>
+              <div>
+                <b>38</b> automated tests passing
               </div>
             </div>
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="section" id="problem">
+        <div className="wrap">
+          <Reveal>
+            <div className="eyebrow">The problem</div>
+            <h2 className="section-title">Agents got wallets, but no memory.</h2>
+            <p className="section-lede" style={{ marginBottom: 34 }}>
+              The agent economy gave AI agents the power to move money — without any memory of
+              their own financial decisions. Every session starts as a stranger holding your
+              wallet. Real money has already been lost, and it traces back to three root causes.
+            </p>
+          </Reveal>
+          {CAUSES.map((c, i) => (
+            <Reveal key={c.n} delay={i * 90} variant="reveal-left">
+              <div className={"cause" + (c.verdict.kind === "honest" ? " scope" : "")}>
+                <div className="cause-n">{c.n}</div>
+                <h3>{c.title}</h3>
+                <p className="mech">{c.mech}</p>
+                {c.incidents.map((inc) => (
+                  <div className="incident" key={inc.label}>
+                    <span className="amt">{inc.amt}</span>
+                    <span className="what">
+                      {inc.what}{" "}
+                      <a href={inc.src} target="_blank" rel="noopener">
+                        {inc.label} ↗
+                      </a>
+                    </span>
+                  </div>
+                ))}
+                <div className={"verdict " + c.verdict.kind}>
+                  <span className="tag">{c.verdict.tag}</span>
+                  <span className="txt">{c.verdict.text}</span>
+                </div>
+              </div>
+            </Reveal>
           ))}
         </div>
       </section>
 
-      <section className="band" id="solution">
-        <h2 style={{ fontSize: 18 }}>The solution: memory is the control</h2>
-        <div className="steps">
-          <div className="step">
-            <div className="n">DECIDE ONCE</div>
-            <p>
-              Planner bans a scammer, Policy caps spending, Payments settles — and every decision
-              is written to shared memory with the agent&apos;s name on it.
+      <section className="section" id="solution">
+        <div className="wrap">
+          <Reveal>
+            <div className="eyebrow">The solution</div>
+            <h2 className="section-title">Memory is the control, not a feature.</h2>
+            <p className="section-lede" style={{ marginBottom: 34 }}>
+              The model proposes; deterministic code disposes. Every action passes through a guard
+              that reads shared memory first and records the outcome after.
             </p>
+          </Reveal>
+          <div className="grid-3">
+            {STEPS.map((s, i) => (
+              <Reveal key={s.n} delay={i * 100} variant="reveal-scale">
+                <div className="card card-lift step">
+                  <div className="n">{s.n} — {s.t.toUpperCase()}</div>
+                  <h3>{s.t}</h3>
+                  <p>{s.d}</p>
+                </div>
+              </Reveal>
+            ))}
           </div>
-          <div className="step">
-            <div className="n">RECALL ALWAYS</div>
-            <p>
-              Before a dollar moves, the agent recalls: already paid? banned — exactly, by alias,
-              or fuzzy over the journal? which rule was in force? No recall, no payment.
+        </div>
+      </section>
+
+      <section className="section" id="team">
+        <div className="wrap">
+          <Reveal>
+            <div className="eyebrow">The team</div>
+            <h2 className="section-title">Three agents, three jobs, one notebook.</h2>
+            <p className="section-lede" style={{ marginBottom: 34 }}>
+              Each agent is a real tool-calling loop with its own role and tool belt. They never
+              meet — they coordinate entirely through what they write down.
             </p>
+          </Reveal>
+          <div className="grid-3">
+            {AGENTS.map((a, i) => (
+              <Reveal key={a.key} delay={i * 100}>
+                <div className={"card card-lift agent-card " + a.key}>
+                  <span className="role">{a.role}</span>
+                  <h3>{a.title}</h3>
+                  <p>{a.body}</p>
+                  <ul>
+                    {a.bullets.map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
+            ))}
           </div>
-          <div className="step">
-            <div className="n">REFUSE OR PAY</div>
-            <p>
-              A deterministic guard disposes what the model proposes. Replays, banned vendors and
-              over-cap demands are refused with the evidence cited — the signature is never even
-              created.
+        </div>
+      </section>
+
+      <section className="section" id="proof">
+        <div className="wrap">
+          <Reveal>
+            <div className="eyebrow">The proof</div>
+            <h2 className="section-title">Delete the memory and it pays the scammer.</h2>
+            <p className="section-lede" style={{ marginBottom: 34 }}>
+              240 payment decisions — legit payments, replays, banned vendors and over-cap demands
+              — each checked in a fresh session, with memory and without. Same obligations. The
+              only variable is memory.
             </p>
+          </Reveal>
+          <div className="proof-wrap">
+            <Reveal variant="reveal-scale">
+              <div className="stat good">
+                <div className="k">With memory</div>
+                <div className="v">160 / 160</div>
+                <div className="d">harmful payments blocked — and all 80 legitimate payments still went through.</div>
+                <div className="bar good">
+                  <i style={{ width: "100%" }} />
+                </div>
+              </div>
+            </Reveal>
+            <Reveal delay={120} variant="reveal-scale">
+              <div className="stat bad">
+                <div className="k">Memory deleted</div>
+                <div className="v">160 / 160</div>
+                <div className="d">sail straight through. Zero blocked. The team becomes strangers with a wallet.</div>
+                <div className="bar bad">
+                  <i style={{ width: "100%" }} />
+                </div>
+              </div>
+            </Reveal>
           </div>
+          <Reveal delay={180}>
+            <p style={{ color: "var(--ink-3)", fontSize: 14, marginTop: 18 }}>
+              x402 purchases tell the same story in reverse: 60/60 completed with memory, 0/60 even
+              possible without it — the agent refuses to sign an unguarded authorization.{" "}
+              <Link href="/app" style={{ color: "var(--primary)", fontWeight: 600, textDecoration: "none" }}>
+                Re-run it live in the app →
+              </Link>
+            </p>
+          </Reveal>
         </div>
       </section>
 
-      <section className="agent-cards">
-        <div className="card">
-          <h3>Planner</h3>
-          <p>Decides who to trust. Bans scammers, approves vendors, writes standing directives the whole team must obey.</p>
-        </div>
-        <div className="card">
-          <h3>Policy</h3>
-          <p>Sets the spending rules. Caps, effective dates — every payment is judged under the rule in force when it was incurred.</p>
-        </div>
-        <div className="card">
-          <h3>Payments</h3>
-          <p>Moves USDC on Base and buys x402 paywalls — and refuses whatever memory forbids, citing the record.</p>
-        </div>
-      </section>
-
-      <section className="band" id="proof">
-        <div className="stat good">
-          With memory: 160/160 harmful payments blocked
-          <div className="proof-bar">
-            <div className="proof-fill good" style={{ width: "100%" }} />
-          </div>
-        </div>
-        <div className="stat bad" style={{ marginTop: 12 }}>
-          Without: 160/160 sail through
-          <div className="proof-bar">
-            <div className="proof-fill bad" style={{ width: "100%" }} />
-          </div>
-        </div>
-        <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          Same obligations. The only difference is memory. Re-run it live in the app — plus 60/60
-          x402 purchases completed with memory vs 0/60 possible without it.
-        </p>
-      </section>
-
-      <section className="band" id="live">
-        <h2 style={{ fontSize: 18 }}>Live on Base</h2>
-        <div className="tx-strip">
-          {TXS.map((t) => (
-            <a
-              key={t.hash}
-              href={"https://sepolia.basescan.org/tx/" + t.hash}
-              target="_blank"
-              rel="noopener"
-            >
-              {short(t.hash)} · {t.label} ↗
-            </a>
-          ))}
+      <section className="section-sm" id="live">
+        <div className="wrap">
+          <Reveal>
+            <div className="eyebrow">Live on Base</div>
+            <h2 className="section-title" style={{ fontSize: 26, marginBottom: 20 }}>
+              Real transactions, not screenshots.
+            </h2>
+          </Reveal>
+          <Reveal delay={80}>
+            <div className="tx-strip">
+              {TXS.map((t) => (
+                <a
+                  className="tx-card"
+                  key={t.hash}
+                  href={"https://sepolia.basescan.org/tx/" + t.hash}
+                  target="_blank"
+                  rel="noopener"
+                >
+                  <span className="h">{short(t.hash)} ↗</span>
+                  <span className="l">{t.label}</span>
+                </a>
+              ))}
+            </div>
+          </Reveal>
         </div>
       </section>
 
-      <footer>
-        <a href="https://github.com/mhizer-fatai/nunes-ai">Repo</a>
-        <span>Sibyl Labs Hackathon 2026</span>
-        <span>Apache-2.0</span>
+      <footer className="footer">
+        <div className="wrap footer-inner">
+          <a href="https://github.com/mhizer-fatai/nunes-ai" target="_blank" rel="noopener">
+            GitHub
+          </a>
+          <Link href="/app">Launch app</Link>
+          <span className="spacer">Sibyl Labs Hackathon 2026 · Apache-2.0</span>
+        </div>
       </footer>
     </>
   );
