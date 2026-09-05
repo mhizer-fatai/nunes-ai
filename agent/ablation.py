@@ -8,16 +8,22 @@ re-run it and get the same number. Each obligation is checked in a FRESH
 MemoryStore on the same db (a fresh session every time) in the WITH arm,
 and against a deleted memory layer in the WITHOUT arm.
 
-Obligation mix (24 per trial):
+Obligation mix, payments arm (24 per trial):
   - 8  legit payments (clean vendor, under cap, fresh intent) -> must ALLOW
   - 6  replays of already-paid intents                    -> must BLOCK (double-pay)
   - 6  payments to a banned vendor (exact + alias trail)  -> must BLOCK (ban)
   - 4  payments above the rule cap                        -> must BLOCK (policy)
 
-Headline: harmful payments blocked WITH memory vs allowed WITHOUT.
+x402 arm (9 per trial): 6 fresh paywalled purchases + 3 replays of
+already-bought resources. Offline: the 402/200 transport is canned (same
+shape the live vendor emits), but the guard hook, EIP-3009 signing,
+idempotency claim, and journaling are the real code paths verified against
+the live facilitator. WITHOUT memory this arm fails CLOSED: the agent
+refuses to sign an unguarded authorization, so zero purchases are possible.
 """
 
 import argparse
+import base64
 import json
 import os
 import tempfile
@@ -86,6 +92,60 @@ def run_arm(db: str | None, obs: list[tuple[str, PayRequest]]) -> dict:
     return {"allowed": allowed, "blocked": blocked}
 
 
+def run_x402_arm(db: str | None, trials: int) -> dict:
+    """One x402 arm. db=None ablates the memory (every purchase must be
+    refused: an EIP-3009 signature is the point of no return, so the agent
+    fails closed rather than sign unguarded)."""
+    try:
+        from . import x402store as xs
+        from .x402server import payment_required_header
+        from x402 import SettleResponse
+    except Exception as exc:  # SDK not installed
+        return {"skipped": f"x402 layer unavailable: {exc}"}
+
+    settle = base64.b64encode(
+        SettleResponse(success=True, transaction="0x" + "ab" * 32,
+                       network="eip155:84532").model_dump_json().encode()
+    ).decode()
+
+    def probe(url):
+        return (402,
+                {"PAYMENT-REQUIRED": payment_required_header(
+                    pay_to=VENDOR, amount_units=10_000, resource_url=url)},
+                b"")
+
+    def get(url, headers):
+        return 200, {"PAYMENT-RESPONSE": settle}, b'{"feed": "ok"}'
+
+    from .config import config
+    old_probe, old_get = xs._probe, xs._get
+    old_key = config.private_key
+    config.private_key = "0x" + "11" * 32  # offline throwaway signer, never funded
+    counts = {"purchases_ok": 0, "purchases_total": 0,
+              "replays_blocked": 0, "replays_total": 0}
+    try:
+        xs._probe, xs._get = probe, get
+        for t in range(trials):
+            suffix = "" if t == 0 else f"-t{t}"
+            urls = [f"http://feed.local/{i}{suffix}" for i in range(6)]
+            for u in urls:
+                out = xs.buy(None if db is None else MemoryStore(db),
+                             "payments", u, budget_usdc=1.0)
+                counts["purchases_total"] += 1
+                if out.startswith("PAID via x402"):
+                    counts["purchases_ok"] += 1
+            for u in urls[:3]:
+                out = xs.buy(None if db is None else MemoryStore(db),
+                             "payments", u, budget_usdc=1.0)
+                counts["replays_total"] += 1
+                if out.startswith("BLOCKED"):
+                    counts["replays_blocked"] += 1
+    finally:
+        xs._probe, xs._get = old_probe, old_get
+        config.private_key = old_key
+    return counts
+
+
 def run_experiment(db_path: str | None = None, trials: int = 1) -> dict:
     """Run the full experiment. Returns a JSON-serializable report dict."""
     if db_path is None:
@@ -119,6 +179,18 @@ def run_experiment(db_path: str | None = None, trials: int = 1) -> dict:
     legit_total = sum(1 for arm in with_rows for r in arm["blocked"] + arm["allowed"]
                       if r["category"] == "legit")
 
+    x402_with = run_x402_arm(db_path, trials)
+    x402_without = run_x402_arm(None, trials)
+    x402_note = ""
+    if "skipped" not in x402_with:
+        x402_note = (
+            f" x402 - WITH memory: {x402_with['purchases_ok']}/{x402_with['purchases_total']} "
+            f"purchases completed and {x402_with['replays_blocked']}/{x402_with['replays_total']} "
+            f"replays refused; WITHOUT memory: {x402_without.get('purchases_ok', 0)}/"
+            f"{x402_without.get('purchases_total', 0)} purchases possible "
+            f"(refuses to sign an unguarded authorization)."
+        )
+
     return {
         "trials": trials,
         "obligations_per_trial": len(obligations(0)),
@@ -133,11 +205,13 @@ def run_experiment(db_path: str | None = None, trials: int = 1) -> dict:
             "harmful_blocked": without_blocked_bad,
             "harmful_allowed": without_allowed_bad,
         },
+        "x402": {"with_memory": x402_with, "without_memory": x402_without},
         "headline": (
             f"WITH memory: {with_blocked}/{with_bad_total} harmful payments blocked, "
             f"{legit_allowed}/{legit_total} legit payments allowed. "
             f"WITHOUT memory: {without_allowed_bad}/{without_allowed_bad + without_blocked_bad} "
             f"harmful payments sail through, {without_blocked_bad} blocked."
+            + x402_note
         ),
     }
 
@@ -151,6 +225,11 @@ def main(argv: list[str] | None = None) -> int:
     report = run_experiment(args.db, trials=args.trials)
     print(report["headline"])
     print(f"  with-memory blocks by category: {report['with_memory']['by_category_blocked']}")
+    if "skipped" not in report["x402"]["with_memory"]:
+        print(f"  x402 with-memory: {report['x402']['with_memory']}")
+        print(f"  x402 without-memory purchases possible: "
+              f"{report['x402']['without_memory']['purchases_ok']}"
+              f"/{report['x402']['without_memory']['purchases_total']}")
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2)
