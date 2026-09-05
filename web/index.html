@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nunes AI — three agents, one shared memory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header>
+  <div class="brand">Nunes <span>AI</span></div>
+  <div class="tagline">Three agents. One shared memory. No contradictions.</div>
+  <div class="pills">
+    <span class="pill" id="pill-memory">memory: …</span>
+    <span class="pill" id="pill-chain">chain: …</span>
+  </div>
+</header>
+<main>
+  <section class="card" aria-label="Team chat">
+    <h2>Talk to the team</h2>
+    <div id="chat-log" role="log" aria-live="polite"></div>
+    <form id="chat-form">
+      <div class="ai-prompt-box">
+        <input id="chat-input" type="text" maxlength="2000" autocomplete="off"
+               placeholder="Ban a vendor, set a rule, pay an invoice…">
+        <button id="chat-send" type="submit">Send</button>
+      </div>
+    </form>
+  </section>
+  <div class="side">
+    <section class="card" aria-label="Shared memory">
+      <h2>Shared memory — the notebook</h2>
+      <div id="journal-log"></div>
+    </section>
+    <section class="card" id="ablation-card" aria-label="Deletion test">
+      <h2>Deletion test</h2>
+      <div class="body">
+        <p>Same obligations, memory on vs memory deleted. Re-runs the experiment live:</p>
+        <div id="ablation-result"><span class="empty">Not run yet in this session.</span></div>
+        <button id="ablation-run" type="button">Run the deletion test</button>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
