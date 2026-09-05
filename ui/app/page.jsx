@@ -7,7 +7,6 @@ const NAV_LINKS = [
   { href: "#solution", label: "Solution" },
   { href: "#proof", label: "Proof" },
   { href: "#live", label: "Live" },
-  { href: "/demo", label: "Demo" },
 ];
 
 const CAUSES = [
@@ -165,8 +164,8 @@ export default function Landing() {
               <Link className="btn btn-primary" href="/app">
                 Start free
               </Link>
-              <Link className="btn btn-ghost" href="/demo">
-                Watch 3-step demo
+              <Link className="btn btn-ghost" href="#proof">
+                See the deletion test
               </Link>
             </div>
             <div className="hero-caption">No credit card · runs on Base Sepolia · Apache-2.0</div>
