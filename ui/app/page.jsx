@@ -1,48 +1,96 @@
 import Link from "next/link";
 
+const CAUSES = [
+  {
+    n: "ROOT CAUSE 01",
+    title: "The model's reasoning was the authorization",
+    mech:
+      "Nothing sat between “the agent decided” and “the money moved.” No gate, no second check — so whoever could talk to the agent could spend its wallet.",
+    incidents: [
+      {
+        amt: "$150K+",
+        what:
+          "An attacker gifted the wallet an NFT that silently unlocked its transfer tools, then posted an instruction hidden in Morse code. Grok decoded it, reposted it, and Bankr's feed parser signed the agent's own output as a transfer command. No key stolen, no contract exploited, the chain worked fine.",
+        src: "https://ambcrypto.com/ai-linked-wallet-drained-via-prompt-injection-in-bankr-exploit/",
+        label: "Grok / Bankr, May 2026",
+      },
+      {
+        amt: "$47K",
+        what:
+          "Pure semantics: the attacker convinced the agent that “approveTransfer” meant approving an incoming contribution rather than sending funds out. Its own reasoning was turned against it.",
+        src: "https://www.akinciborg.com/blog/posts/crypto-ai-agent-hacking.html",
+        label: "Freysa",
+      },
+      {
+        amt: "∞ approvals",
+        what:
+          "Coinbase's own agent toolkit let injected input steer the model straight into transfer calls with no human confirmation gate — plus unlimited ERC-20 approvals. Validated on Base Sepolia via HackerOne.",
+        src: "https://www.chaincatcher.com/en/article/2258728",
+        label: "AgentKit, Feb 2026",
+      },
+    ],
+    verdict: {
+      kind: "blocked",
+      tag: "Nunes blocks this",
+      text:
+        "The model only proposes. A deterministic guard disposes — and the recipient is read from the vendor directory in memory, never from model text.",
+    },
+  },
+  {
+    n: "ROOT CAUSE 02",
+    title: "No memory that the action already happened",
+    mech:
+      "The work succeeded, the response was lost, the agent retried — and nothing durable recorded “already done.” So it did it again.",
+    incidents: [
+      {
+        amt: "×2 payments",
+        what:
+          "CrewAI issue #5802: when a task fails after its tool already ran, the retry re-invokes the payment function. Their words: “duplicate payments, emails, trades possible.” No idempotency guard exists.",
+        src: "https://github.com/crewAIInc/crewAI/issues/5802",
+        label: "CrewAI #5802",
+      },
+      {
+        amt: "43× / 200×3",
+        what:
+          "One lost response spawned 43 duplicate support tickets and 43 duplicate emails. A restarted agent resent a whole batch — 200 leads got the same email three times in 24 hours.",
+        src: "https://www.redhat.com/en/blog/why-good-ai-agents-fail-production-missing-infrastructure-layer",
+        label: "Red Hat",
+      },
+    ],
+    verdict: {
+      kind: "blocked",
+      tag: "Nunes blocks this",
+      text:
+        "Every obligation is claimed in memory before broadcast and marked paid with its tx hash after. A replay is refused, citing the original transaction.",
+    },
+  },
+  {
+    n: "ROOT CAUSE 03",
+    title: "The infrastructure itself was compromised",
+    mech:
+      "Not a trick and not a memory failure — a break-in. Attackers reached the agent's own control surface and queued actions directly.",
+    incidents: [
+      {
+        amt: "$106K",
+        what:
+          "Attackers accessed the agent's dashboard and queued malicious replies, causing its wallet to send 55.5 ETH.",
+        src: "https://blockonomi.com/ai-crypto-bot-aixbt-loses-106200-in-eth-through-dashboard-breach/",
+        label: "AIXBT, Mar 2025",
+      },
+    ],
+    verdict: {
+      kind: "honest",
+      tag: "Nunes does not fix this",
+      text:
+        "If someone owns your server, memory will not save you. It does limit the blast radius: live payments only reach addresses a planner already registered, so funds cannot be redirected to a fresh address.",
+    },
+  },
+];
+
 const TXS = [
   { hash: "0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e", label: "USDC transfer" },
   { hash: "0x15274fda7af3cf75bd3b98ed073208a8564fe78ee0ea4611439efcbda58ba15c", label: "agent payment" },
   { hash: "0x7cf2cb70f40b251281ce2626c1f104ebeb095045b113552a71ede2f514c8a537", label: "x402 purchase" },
-];
-
-const FAILURES = [
-  {
-    amount: "$150K+",
-    text: "drained from an AI agent's wallet on Base by a prompt-injected message hidden in Morse code (Grok / Bankr, May 2026).",
-    source: "https://ambcrypto.com/ai-linked-wallet-drained-via-prompt-injection-in-bankr-exploit/",
-    sourceLabel: "Ambcrypto",
-  },
-  {
-    amount: "$106K",
-    text: "taken from an AI trading agent's wallet after attackers queued malicious replies through its own dashboard (AIXBT, Mar 2025).",
-    source: "https://blockonomi.com/ai-crypto-bot-aixbt-loses-106200-in-eth-through-dashboard-breach/",
-    sourceLabel: "Blockonomi",
-  },
-  {
-    amount: "$47K",
-    text: "extracted from an AI prize vault by reframing 'approveTransfer' as an incoming contribution (Freysa).",
-    source: "https://www.akinciborg.com/blog/posts/crypto-ai-agent-hacking.html",
-    sourceLabel: "Akıncıborg",
-  },
-  {
-    amount: "∞ approvals",
-    text: "Coinbase's own agent toolkit shipped prompt-injection plus unlimited ERC-20 approvals — validated on Base Sepolia via HackerOne, Feb 2026.",
-    source: "https://www.chaincatcher.com/en/article/2258728",
-    sourceLabel: "ChainCatcher",
-  },
-  {
-    amount: "×2 everything",
-    text: "CrewAI issue #5802: retrying a task re-fires its payment tools — 'duplicate payments, emails, trades possible.' No idempotency guard.",
-    source: "https://github.com/crewAIInc/crewAI/issues/5802",
-    sourceLabel: "GitHub",
-  },
-  {
-    amount: "43× / 200×3",
-    text: "One failed retry created 43 duplicate tickets; one restarted agent emailed 200 leads three times in 24 hours.",
-    source: "https://www.redhat.com/en/blog/why-good-ai-agents-fail-production-missing-infrastructure-layer",
-    sourceLabel: "Red Hat",
-  },
 ];
 
 function short(h) {
@@ -91,26 +139,32 @@ export default function Landing() {
 
       <section className="band" id="problem">
         <h2 style={{ fontSize: 18 }}>The problem: agents got wallets, but no memory</h2>
-        <p style={{ color: "var(--ink-dim)", fontSize: 15, maxWidth: 720 }}>
+        <p style={{ color: "var(--ink-dim)", fontSize: 15, maxWidth: 760 }}>
           The agent economy gave AI agents the power to move money — without any memory of their
-          own financial decisions. Every session starts as a stranger holding your wallet. These
-          are not hypotheticals; they are documented failures:
+          own financial decisions. Every session starts as a stranger holding your wallet. Real
+          money has already been lost, and the losses trace back to three root causes:
         </p>
-        <div className="steps">
-          {FAILURES.map((f) => (
-            <div className="step" key={f.amount}>
-              <div className="n">{f.amount}</div>
-              <p>
-                {f.text}{" "}
-                <a
-                  href={f.source}
-                  target="_blank"
-                  rel="noopener"
-                  style={{ color: "var(--primary)", fontSize: 13 }}
-                >
-                  {f.sourceLabel} ↗
-                </a>
-              </p>
+        <div className="causes">
+          {CAUSES.map((c) => (
+            <div className={"cause" + (c.verdict.kind === "honest" ? " scope" : "")} key={c.n}>
+              <div className="n">{c.n}</div>
+              <h3>{c.title}</h3>
+              <p className="mech">{c.mech}</p>
+              {c.incidents.map((inc) => (
+                <div className="incident" key={inc.label}>
+                  <span className="amt">{inc.amt}</span>
+                  <span className="what">
+                    {inc.what}{" "}
+                    <a href={inc.src} target="_blank" rel="noopener">
+                      {inc.label} ↗
+                    </a>
+                  </span>
+                </div>
+              ))}
+              <div className={"verdict " + c.verdict.kind}>
+                <span className="tag">{c.verdict.tag}</span>
+                <span>{c.verdict.text}</span>
+              </div>
             </div>
           ))}
         </div>
