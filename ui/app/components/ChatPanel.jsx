@@ -5,6 +5,28 @@ import { useRef, useState } from "react";
 const STARTER =
   "The team is awake. Ask the planner to ban a vendor, the policy agent for a rule, or payments to settle an invoice — everything lands in the shared notebook.";
 
+/* Render 0x addresses in mono + BLOCKED in red, like the Stitch screen. */
+function rich(text) {
+  const parts = String(text || "").split(/(0x[0-9a-fA-F]{40}|BLOCKED)/g);
+  return parts.map((p, i) => {
+    if (/^0x[0-9a-fA-F]{40}$/.test(p)) {
+      return (
+        <span className="mono" style={{ color: "#c0c1ff" }} key={i}>
+          {p.slice(0, 6)}…{p.slice(-4)}
+        </span>
+      );
+    }
+    if (p === "BLOCKED") {
+      return (
+        <span className="blocked-word" key={i}>
+          BLOCKED
+        </span>
+      );
+    }
+    return <span key={i}>{p}</span>;
+  });
+}
+
 export default function ChatPanel({ onAnswered }) {
   const [messages, setMessages] = useState([{ agent: "payments", text: STARTER }]);
   const [input, setInput] = useState("");
@@ -67,7 +89,7 @@ export default function ChatPanel({ onAnswered }) {
             <div className="msg team" key={i}>
               {m.agent && <div className={"agent-badge " + m.agent}>{m.agent}</div>}
               <div className="bubble">
-                {m.thinking ? <span className="shimmer">{m.text}</span> : m.text}
+                {m.thinking ? <span className="shimmer">{m.text}</span> : rich(m.text)}
               </div>
             </div>
           )

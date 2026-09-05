@@ -39,13 +39,23 @@ export default function AblationPanel() {
           {error && <div className="toast">Deletion test failed: {error}</div>}
           {result && (
             <>
-              <div className="big-number">
-                <span className="good">
-                  With memory: {result.withBlocked}/{result.withTotal} harmful payments blocked.{" "}
-                </span>
-                <span className="bad">
-                  Without: {result.withoutAllowed}/{result.withoutTotal} sail through.
-                </span>
+              <div className="stat good">
+                With memory: {result.withBlocked}/{result.withTotal} harmful payments blocked
+                <div className="proof-bar">
+                  <div
+                    className="proof-fill good"
+                    style={{ width: (100 * result.withBlocked) / Math.max(1, result.withTotal) + "%" }}
+                  />
+                </div>
+              </div>
+              <div className="stat bad">
+                Without: {result.withoutAllowed}/{result.withoutTotal} sail through
+                <div className="proof-bar">
+                  <div
+                    className="proof-fill bad"
+                    style={{ width: (100 * result.withoutAllowed) / Math.max(1, result.withoutTotal) + "%" }}
+                  />
+                </div>
               </div>
               <div>
                 Blocked by category:{" "}
