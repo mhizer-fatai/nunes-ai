@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sibyl_memory_client import MemoryClient
@@ -12,15 +12,24 @@ CAT_PAYMENT = "payment"
 CAT_COUNTERPARTY = "counterparty"
 CAT_RULE = "rule"
 CAT_DIRECTIVE = "directive"
+CAT_VOTE = "vote"
 
 STATUS_PAID = "paid"
 STATUS_PENDING = "pending"
 STATUS_FAILED = "failed"
 STATUS_BANNED = "banned"
 STATUS_APPROVED = "approved"
+STATUS_VOTED = "voted"
 
 BAN_KIND = "ban"
 APPROVE_KIND = "approve"
+CONTACT_KIND = "contact"
+
+# Loop B: a brand-new payee becomes payable only when this many distinct
+# roles have recorded an explicit confirmation vote in memory, AND the
+# quorum timelock (config.vendor_timelock_seconds) has passed. A single
+# compromised agent can never make a new address payable on its own.
+QUORUM_REQUIRED = 2
 
 
 class NoMemory(Exception):
@@ -275,6 +284,113 @@ class MemoryStore:
             extra={"kind": APPROVE_KIND, "address": norm, "aliases": aliases, "note": note, **extra_actor},
         )
 
+    # -- Loop B: memory-mediated consent (zero-human for new payees) ------------
+
+    def propose_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (),
+                             note: str = "", actor: str | None = None) -> str:
+        """Register a NEW payee as `pending`. It is not payable until it earns
+        QUORUM_REQUIRED confirmation votes from distinct roles AND the timelock
+        passes. One compromised agent cannot make a fresh address payable."""
+        norm = normalize_address(address)
+        aliases = [a.lower() for a in aliases]
+        body = {"address": norm, "aliases": aliases, "note": note,
+                "kind": CONTACT_KIND, "proposed_by": actor, "proposed_at": now_iso(),
+                "quorum_at": None, "payable_at": None}
+        self.client.set_entity(CAT_COUNTERPARTY, norm, body, status=STATUS_PENDING)
+        for alias in aliases:
+            self.client.set_entity(CAT_COUNTERPARTY, alias, dict(body), status=STATUS_PENDING)
+        tag, extra_actor = _actor_tag(actor)
+        self.write_event(
+            acted=[f"{tag}PROPOSED {address} ({', '.join(aliases) or 'no alias'}): {note} - "
+                   f"pending, needs {QUORUM_REQUIRED} role confirmations"],
+            extra={"kind": CONTACT_KIND, "address": norm, "aliases": aliases,
+                   "note": note, "status": STATUS_PENDING, **extra_actor},
+        )
+        if actor:
+            self.vote_counterparty(norm, actor, note=note)
+        return norm
+
+    def vote_counterparty(self, address: str, actor: str, note: str = "") -> dict:
+        """Record one role's confirmation vote for a pending payee. Distinct
+        roles only: the same role voting twice counts once. Returns
+        {votes, quorum_met, payable, payable_at|None}."""
+        norm = normalize_address(address)
+        ent = self.get_entity(CAT_COUNTERPARTY, norm)
+        if ent is None or (ent.get("status") not in (STATUS_PENDING, STATUS_VOTED, STATUS_APPROVED)):
+            raise ValueError(f"{norm} is not a pending payee")
+        body = ent.get("body") or {}
+
+        # one vote per role - idempotent
+        existing = self.get_entity(CAT_VOTE, f"vote:{norm}:{actor}")
+        if existing is None:
+            self.client.set_entity(
+                CAT_VOTE, f"vote:{norm}:{actor}",
+                {"address": norm, "role": actor, "voted_at": now_iso(), "note": note},
+                status=STATUS_VOTED,
+            )
+
+        roles = sorted(self.counterparty_votes(norm))
+        quorum_met = len(roles) >= QUORUM_REQUIRED
+        if quorum_met and not body.get("quorum_at"):
+            body = dict(body)
+            body["quorum_at"] = now_iso()
+            self.client.set_entity(CAT_COUNTERPARTY, norm, body, status=STATUS_VOTED)
+        self.write_event(
+            acted=[f"{actor.upper()} CONFIRMED {norm} ({len(roles)}/{QUORUM_REQUIRED} votes)"],
+            extra={"kind": "vote", "address": norm, "role": actor,
+                   "votes": len(roles), "quorum_met": quorum_met},
+        )
+
+        payable_at = None
+        if quorum_met and body.get("quorum_at"):
+            q = parse_ts(body["quorum_at"])
+            payable_at = q + timedelta(seconds=int(getattr(config, "vendor_timelock_seconds", 0)))
+            if parse_ts(now_iso()) >= payable_at:
+                body = dict(body)
+                body["payable_at"] = payable_at.isoformat().replace("+00:00", "Z")
+                self.client.set_entity(CAT_COUNTERPARTY, norm, body, status=STATUS_APPROVED)
+        return {"votes": len(roles), "quorum_met": quorum_met,
+                "payable": payable_at is not None and parse_ts(now_iso()) >= payable_at,
+                "payable_at": payable_at.isoformat().replace("+00:00", "Z") if payable_at else None}
+
+    def counterparty_votes(self, address: str) -> list[str]:
+        norm = normalize_address(address)
+        out: list[str] = []
+        for ent in self.list_entities(CAT_VOTE, limit=500):
+            name = ent.get("name") or ""
+            if name.startswith(f"vote:{norm}:"):
+                body = ent.get("body") or {}
+                role = body.get("role") or name.rsplit(":", 1)[-1]
+                if role not in out:
+                    out.append(role)
+        return out
+
+    def contact_state(self, address: str) -> dict | None:
+        """Loop B status for a pending/proposed payee: votes, quorum, timelock
+        remaining. Returns None if the address isn't a pending contact."""
+        norm = normalize_address(address)
+        try:
+            ent = self.get_entity(CAT_COUNTERPARTY, norm)
+        except Exception:
+            return None
+        if ent is None or (ent.get("body") or {}).get("kind") != CONTACT_KIND:
+            return None
+        body = ent.get("body") or {}
+        votes = self.counterparty_votes(norm)
+        quorum_met = len(votes) >= QUORUM_REQUIRED
+        payable = False
+        remaining = None
+        if quorum_met and body.get("quorum_at"):
+            payable_at = parse_ts(body["quorum_at"]) + timedelta(
+                seconds=int(getattr(config, "vendor_timelock_seconds", 0)))
+            payable = parse_ts(now_iso()) >= payable_at
+            if not payable:
+                remaining = int((payable_at - parse_ts(now_iso())).total_seconds())
+        return {"status": STATUS_APPROVED if payable else STATUS_PENDING,
+                "votes": votes, "quorum_met": quorum_met, "payable": payable,
+                "remaining_s": remaining, "proposed_by": body.get("proposed_by"),
+                "note": body.get("note")}
+
     def counterparty_status(self, address: str, alias: str | None = None) -> tuple[str | None, list[str]]:
         """Recall whether a counterparty is banned/approved.
 
@@ -320,10 +436,10 @@ class MemoryStore:
         """Resolve a payment recipient to the canonical address stored in the
         vendor directory (shared memory).
 
-        Returns the registered lowercase address, or None when neither the
-        address nor the alias matches a standing counterparty record. When
-        nothing is registered, nothing is trusted: the caller must refuse a
-        live broadcast rather than transcribe a fresh address.
+        Only PAYABLE addresses resolve: an approved vendor, or a pending
+        contact whose quorum is met and whose timelock has passed. A pending
+        contact that has not earned the quorum resolves to None - the money
+        path must refuse it. When nothing is registered, nothing is trusted.
         """
         candidates: list[str] = []
         if address:
@@ -335,14 +451,25 @@ class MemoryStore:
             candidates.append(alias.strip().lower())
         for cand in candidates:
             ent = self.get_entity(CAT_COUNTERPARTY, cand)
-            if ent is not None:
-                body = ent.get("body") or {}
-                canonical = body.get("address")
-                if canonical:
-                    try:
-                        return normalize_address(str(canonical))
-                    except BadAddress:
-                        continue
+            if ent is None:
+                continue
+            body = ent.get("body") or {}
+            canonical = body.get("address")
+            # Pending contacts (Loop B) must earn quorum + timelock before
+            # they are a valid broadcast destination. `cand` may be an alias,
+            # so the consent check runs against the canonical address.
+            if body.get("kind") == CONTACT_KIND:
+                try:
+                    check = normalize_address(str(canonical)) if canonical else None
+                except BadAddress:
+                    check = None
+                if not check or not self.contact_state(check) or not self.contact_state(check).get("payable"):
+                    continue
+            if canonical:
+                try:
+                    return normalize_address(str(canonical))
+                except BadAddress:
+                    continue
         return None
 
     # -- spending rules (temporal recall) ------------------------------------

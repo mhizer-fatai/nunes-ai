@@ -187,6 +187,89 @@ def test_guard_governance_allows_uncontested_writes(seeded: str) -> None:
     assert g.decide_rule(5 * DEC, version="v2").allowed
 
 
+def test_quorum_single_agent_cannot_add_payee(seeded: str, monkeypatch) -> None:
+    """Loop B: one compromised agent proposing a vendor cannot make it payable -
+    the money path refuses it until 2 distinct roles confirm + timelock passes."""
+    from agent.toolkit import t_propose_vendor, t_pay, t_confirm_vendor
+    from agent.config import config
+    monkeypatch.setattr(config, "rpc_url", "https://sepolia.base.org")
+    monkeypatch.setattr(config, "private_key", "0x" + "1" * 64)
+    monkeypatch.setattr(config, "simulate", False)
+    monkeypatch.setattr(config, "require_registered", True)
+
+    # Grok-style: a tricked PLANNER proposes the attacker as a vendor.
+    planner = _ctx(seeded, roles.PLANNER)
+    out = t_propose_vendor(planner, {"address": EVIL, "aliases": ["evil-corp"], "note": "legit vendor"})
+    assert out.startswith("PROPOSED")
+    assert "NOT payable" in out
+
+    from agent.toolkit import resolve_broadcast_recipient
+    addr, refusal = resolve_broadcast_recipient(_ctx(seeded, roles.PAYMENTS), EVIL, "evil-corp")
+    assert addr is None, "a pending contact must not resolve to a payable address"
+
+    # Even a compromised PLANNER voting again is one role -> still not payable.
+    memory = MemoryStore(seeded)
+    votes = memory.counterparty_votes(EVIL)
+    assert len(votes) == 1, "proposal records one vote, same role can't double-vote"
+
+
+def test_quorum_met_but_timelock_blocks(seeded: str, monkeypatch) -> None:
+    """2 distinct roles confirm, but the timelock hasn't passed: still not payable."""
+    from agent.config import config
+    monkeypatch.setattr(config, "rpc_url", "https://sepolia.base.org")
+    monkeypatch.setattr(config, "private_key", "0x" + "1" * 64)
+    monkeypatch.setattr(config, "simulate", False)
+    monkeypatch.setattr(config, "require_registered", True)
+
+    from agent.toolkit import t_propose_vendor, t_confirm_vendor
+
+    t_propose_vendor(_ctx(seeded, roles.PLANNER), {"address": EVIL, "note": "vendor"})
+    out2 = t_confirm_vendor(_ctx(seeded, roles.POLICY), {"address": EVIL})
+    assert "quorum met" in out2
+
+    memory = MemoryStore(seeded)
+    st = memory.contact_state(EVIL)
+    assert st["quorum_met"]
+    assert not st["payable"], "timelock has not passed yet; must NOT be payable"
+
+    from agent.toolkit import resolve_broadcast_recipient
+    addr, _ = resolve_broadcast_recipient(_ctx(seeded, roles.PAYMENTS), EVIL, None)
+    assert addr is None
+
+
+def test_quorum_payable_after_timelock(seeded: str, monkeypatch) -> None:
+    """Quorum met AND timelock passed (config 0s): now payable + broadcastable."""
+    from agent.config import config
+    from agent.toolkit import t_propose_vendor, t_confirm_vendor
+    monkeypatch.setattr(config, "vendor_timelock_seconds", 0)
+
+    t_propose_vendor(_ctx(seeded, roles.PLANNER), {"address": VENDOR, "note": "real vendor"})
+    t_confirm_vendor(_ctx(seeded, roles.POLICY), {"address": VENDOR})
+
+    from agent.toolkit import resolve_broadcast_recipient
+    addr, refusal = resolve_broadcast_recipient(_ctx(seeded, roles.PAYMENTS), VENDOR, None)
+    assert refusal is None
+    assert addr == VENDOR.lower()
+
+
+def test_deleting_memory_destroys_consent(seeded: str, monkeypatch) -> None:
+    """Ablation: without memory the whole consent ledger vanishes - the
+    previously-pending payee is now payable by a stranger."""
+    import agent.toolkit as tk
+    from agent.config import config
+    from agent.toolkit import t_propose_vendor, t_confirm_vendor
+    monkeypatch.setattr(config, "vendor_timelock_seconds", 0)
+
+    t_propose_vendor(_ctx(seeded, roles.PLANNER), {"address": EVIL, "note": "vendor"})
+    t_confirm_vendor(_ctx(seeded, roles.POLICY), {"address": EVIL})
+
+    from agent.toolkit import resolve_broadcast_recipient
+    naked = ActorCtx(actor="payments", memory=None)
+    addr, refusal = resolve_broadcast_recipient(naked, EVIL, None)
+    assert refusal is None and addr == EVIL.lower(), \
+        "memory deleted = the pending payee becomes payable; consent ledger gone"
+
+
 def test_bad_addresses_rejected_everywhere(seeded: str) -> None:
     from agent.memory import BadAddress, normalize_address
     with pytest.raises(BadAddress):

@@ -7,7 +7,7 @@ from .brain import _hash_intent
 from .chain import BaseChain, simulate_transfer
 from .config import config
 from .guard import Guard, cid_key
-from .memory import CAT_PAYMENT, BadAddress, MemoryStore, fmt_amount, normalize_address, now_iso, parse_ts
+from .memory import CAT_PAYMENT, BadAddress, MemoryStore, QUORUM_REQUIRED, fmt_amount, normalize_address, now_iso, parse_ts
 from .policy import PayRequest
 
 USDC_DECIMALS = 10 ** 6
@@ -88,9 +88,68 @@ def t_vendor_status(ctx: ActorCtx, args: dict) -> str:
         return "error: vendor_status needs 'address'."
     alias = args.get("alias")
     status, notes = memory.counterparty_status(address, alias=str(alias) if alias else None)
+    # Loop B: show quorum/vote state for pending contacts.
+    try:
+        st = memory.contact_state(address)
+    except Exception:
+        st = None
+    if st is not None:
+        votes = st["votes"]
+        quorum = st["quorum_met"]
+        if st["payable"]:
+            return f"{address}: APPROVED via quorum ({len(votes)} votes, timelock passed)."
+        return (f"{address}: PENDING consent - {len(votes)}/{QUORUM_REQUIRED} role votes"
+                + (f", payable in ~{st['remaining_s']}s" if st["remaining_s"] is not None else "")
+                + ". A single agent cannot make this payable.")
     if status is None:
         return f"{address}: no standing verdict in memory."
     return f"{address}: {status}.\n" + "\n".join(f"  {n}" for n in notes)
+
+
+def t_propose_vendor(ctx: ActorCtx, args: dict) -> str:
+    """Register a NEW vendor as pending. It is not payable until
+    QUORUM_REQUIRED distinct roles confirm it AND the timelock passes."""
+    memory = _need_memory(ctx)
+    if memory is None:
+        return "BLOCKED: memory layer deleted - a vendor cannot be proposed or verified. Refuse."
+    address = str(args.get("address", "") or "").strip()
+    if not address:
+        return "error: propose_vendor needs 'address'."
+    aliases = [str(a) for a in (args.get("aliases") or [])]
+    note = str(args.get("note", "") or "")
+    decision = Guard(memory).decide_vendor_change(address, alias=args.get("alias"),
+                                                  target="approve")
+    if not decision.allowed:
+        memory.write_event(
+            acted=[f"{ctx.actor.upper()} BLOCKED proposal of {address}: {decision.reason}"],
+            extra={"kind": "governance-block", "actor": ctx.actor, "address": address},
+        )
+        return f"BLOCKED: {decision.reason}\n" + "\n".join(f"  recall: {e}" for e in decision.evidence)
+    norm = memory.propose_counterparty(address, aliases=aliases, note=note, actor=ctx.actor)
+    return (f"PROPOSED {norm} (pending). It is NOT payable yet: it needs {QUORUM_REQUIRED} distinct role "
+            f"confirmations plus the timelock. One agent cannot add a payee.")
+
+
+def t_confirm_vendor(ctx: ActorCtx, args: dict) -> str:
+    """Record this role's confirmation vote for a pending vendor."""
+    memory = _need_memory(ctx)
+    if memory is None:
+        return "BLOCKED: memory layer deleted - a vote cannot be persisted. Refuse."
+    address = str(args.get("address", "") or "").strip()
+    if not address:
+        return "error: confirm_vendor needs 'address'."
+    try:
+        result = memory.vote_counterparty(address, ctx.actor)
+    except ValueError as exc:
+        return f"error: {exc}"
+    if result["payable"]:
+        return f"CONFIRMED - quorum met and timelock passed: {address} is now payable."
+    votes = result["votes"]
+    if result["quorum_met"]:
+        return (f"CONFIRMED - quorum met ({votes}/{QUORUM_REQUIRED} votes). "
+                f"Payable once the timelock passes.")
+    return (f"VOTE RECORDED ({votes}/{QUORUM_REQUIRED}) - {address} still pending consent. "
+            f"Needs {QUORUM_REQUIRED - votes} more distinct role(s).")
 
 
 def t_approve_vendor(ctx: ActorCtx, args: dict) -> str:
@@ -405,6 +464,22 @@ SCHEMAS: dict[str, dict] = {
         },
         "required": ["address"],
     },
+    "propose_vendor": {
+        "type": "object",
+        "properties": {
+            "address": {"type": "string"},
+            "aliases": {"type": "array", "items": {"type": "string"}},
+            "note": {"type": "string"},
+        },
+        "required": ["address"],
+    },
+    "confirm_vendor": {
+        "type": "object",
+        "properties": {
+            "address": {"type": "string"},
+        },
+        "required": ["address"],
+    },
     "ban_vendor": {
         "type": "object",
         "properties": {
@@ -484,6 +559,14 @@ TOOLS: dict[str, dict] = {
     "approve_vendor": {
         "description": "Register a vendor's exact address in the vendor directory and approve it (planner). The stored address becomes the source of truth for future payments. Refused if the vendor is banned unless override=true. Args: {address: str, aliases?: [str], note?: str, override?: bool}",
         "run": t_approve_vendor,
+    },
+    "propose_vendor": {
+        "description": "Propose a NEW vendor. It is NOT payable until QUORUM (2 distinct roles) confirm it and the timelock passes - one agent cannot add a payee. Args: {address: str, aliases?: [str], note?: str}",
+        "run": t_propose_vendor,
+    },
+    "confirm_vendor": {
+        "description": "Record this role's confirmation vote for a pending vendor. Args: {address: str}",
+        "run": t_confirm_vendor,
     },
     "ban_vendor": {
         "description": "Ban a vendor and its aliases (planner). Args: {address: str, aliases?: [str], reason?: str}",

@@ -14,7 +14,8 @@ ROLE_ORDER = (PLANNER, POLICY, PAYMENTS)
 PLANNER_PROMPT = """You are the PLANNER of Nunes AI, a three-agent finance team that shares one persistent memory (Sibyl Memory) across all sessions.
 
 Your job: decide WHO the team does business with and WHAT standing directions bind the team.
-- Approve trustworthy vendors: approve_vendor
+- Propose new vendors: propose_vendor (registers a NEW payee as pending)
+- Confirm pending vendors: confirm_vendor - a NEW payee is only payable after 2 distinct roles confirm it AND a timelock passes. This is the anti-trick guard: one compromised agent alone cannot add a payee.
 - Ban scammers, drainers, bad actors: ban_vendor (record the reason; bans also cover the vendor's aliases)
 - Record standing directions the whole team must follow: directive (e.g. "never pay data vendors without a signed contract", optionally with a spending cap)
 
@@ -73,7 +74,7 @@ ROLE_PROMPTS = {
 }
 
 ROLE_TOOLS = {
-    PLANNER: ("recall", "vendor_status", "approve_vendor", "ban_vendor", "directive", "journal"),
-    POLICY: ("recall", "rules", "latest_directive", "set_rule", "journal"),
-    PAYMENTS: ("recall", "pay", "buy", "payment_lookup", "vendor_status", "rules", "journal"),
+    PLANNER: ("recall", "vendor_status", "propose_vendor", "confirm_vendor", "ban_vendor", "directive", "journal"),
+    POLICY: ("recall", "rules", "latest_directive", "set_rule", "confirm_vendor", "journal"),
+    PAYMENTS: ("recall", "pay", "buy", "payment_lookup", "vendor_status", "rules", "confirm_vendor", "journal"),
 }

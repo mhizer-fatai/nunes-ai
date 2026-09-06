@@ -48,6 +48,10 @@ class Config:
         # memory (the vendor directory). Unknown addresses are refused until a
         # planner registers them. "0" restores pay-by-raw-address.
         self.require_registered: bool = os.environ.get("NUNES_AI_REQUIRE_REGISTERED", "1") == "1"
+        # Loop B: seconds a new payee must wait after quorum is reached
+        # before it becomes payable (default 60s - demo-friendly).
+        self.vendor_timelock_seconds: int = int(
+            os.environ.get("NUNES_AI_TIMELOCK_SECONDS", "60"))
         self.llm_api_key: str | None = os.environ.get("INCEPTION_API_KEY") or os.environ.get("LLM_API_KEY")
         self.llm_base_url: str = os.environ.get(
             "LLM_BASE_URL",

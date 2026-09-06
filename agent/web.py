@@ -118,6 +118,7 @@ def api_status() -> tuple[int, bytes]:
             for r in rules
         ],
         "directive": ((directive.get("body") or {}).get("title") if directive else None),
+        "quorum": {"required": 2, "timelock_s": int(getattr(config, "vendor_timelock_seconds", 60))},
         "counts": counters,
     })
 
