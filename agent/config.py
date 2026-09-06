@@ -52,6 +52,10 @@ class Config:
         # before it becomes payable (default 60s - demo-friendly).
         self.vendor_timelock_seconds: int = int(
             os.environ.get("NUNES_AI_TIMELOCK_SECONDS", "60"))
+        # Loop B: seconds after which an unconfirmed proposal expires
+        # (default 24h). Expired proposals are invisible to the money path.
+        self.vendor_proposal_ttl_seconds: int = int(
+            os.environ.get("NUNES_AI_PROPOSAL_TTL_SECONDS", "86400"))
         self.llm_api_key: str | None = os.environ.get("INCEPTION_API_KEY") or os.environ.get("LLM_API_KEY")
         self.llm_base_url: str = os.environ.get(
             "LLM_BASE_URL",

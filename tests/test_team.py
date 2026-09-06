@@ -89,21 +89,67 @@ def test_approve_banned_needs_explicit_override(seeded: str) -> None:
 
 
 def test_policy_cannot_exceed_planner_directive(seeded: str) -> None:
-    from agent.toolkit import t_directive, t_set_rule
+    from agent.toolkit import t_directive, t_confirm_directive, t_set_rule
     planner = _ctx(seeded, roles.PLANNER)
     rec = t_directive(planner, {"title": "austerity", "text": "bear market: keep caps tight",
                                 "max_amount_usdc": 10})
-    assert "DIRECTIVE recorded" in rec
+    assert "PROPOSED" in rec and "pending" in rec
 
+    # A pending directive binds nothing: an over-cap rule is judged against
+    # the standing directive (none), so the tricked-cap test below matters more.
     policy = _ctx(seeded, roles.POLICY)
-    refused = t_set_rule(policy, {"version": "v2", "max_amount_usdc": 50,
-                                  "effective_from": "2026-09-01T00:00:00.000Z"})
-    assert refused.startswith("BLOCKED")
-    assert "directive cap" in refused
+    c1 = t_confirm_directive(_ctx(seeded, roles.POLICY), {"name": rec.split(" as ")[1].split(" ")[0]})
+    assert "VOTE RECORDED" in c1 or "BINDING" in c1
 
-    allowed = t_set_rule(policy, {"version": "v2", "max_amount_usdc": 5,
-                                  "effective_from": "2026-09-01T00:00:00.000Z"})
-    assert "RULE v2 set" in allowed
+
+def test_tricked_planner_cannot_raise_cap_alone(seeded: str) -> None:
+    """Grok-style cap attack: a tricked PLANNER proposes a 1M directive.
+    One vote is not quorum - the ceiling does not move, and payments above
+    the real cap are still refused."""
+    from agent.toolkit import t_directive, t_set_rule, t_pay
+    planner = _ctx(seeded, roles.PLANNER)
+    rec = t_directive(planner, {"title": "growth", "text": "raise everything",
+                                "max_amount_usdc": 1000000})
+    assert "pending" in rec
+
+    # The standing rule is still v1 (cap 100): a 500 USDC payment is refused.
+    blocked = t_pay(_ctx(seeded, roles.PAYMENTS),
+                    {"to": VENDOR, "amount_usdc": 500, "invoice_ref": "invoice-cap-attack"})
+    assert blocked.startswith("BLOCKED")
+    assert "exceeds limit" in blocked
+
+    # And a rule proposed at the tricked cap binds nothing on one vote.
+    out = t_set_rule(_ctx(seeded, roles.POLICY),
+                     {"version": "vX", "max_amount_usdc": 900000,
+                      "effective_from": "2026-09-01T00:00:00.000Z"})
+    assert "PROPOSED" in out and "pending" in out
+    still_blocked = t_pay(_ctx(seeded, roles.PAYMENTS),
+                          {"to": VENDOR, "amount_usdc": 500, "invoice_ref": "invoice-cap-attack2"})
+    assert still_blocked.startswith("BLOCKED")
+
+
+def test_quorum_makes_cap_binding(seeded: str) -> None:
+    """Two distinct roles confirm a directive + rule: the new ceiling binds."""
+    from agent.toolkit import (t_directive, t_confirm_directive, t_set_rule,
+                               t_confirm_rule, t_pay)
+    rec = t_directive(_ctx(seeded, roles.PLANNER),
+                      {"title": "raise", "text": "raise cap",
+                       "max_amount_usdc": 1000})
+    name = rec.split(" as ")[1].split(" ")[0]
+    assert "pending" in rec
+    c = t_confirm_directive(_ctx(seeded, roles.POLICY), {"name": name})
+    assert "BINDING" in c
+
+    out = t_set_rule(_ctx(seeded, roles.POLICY),
+                     {"version": "v9", "max_amount_usdc": 500,
+                      "effective_from": "2026-09-01T00:00:00.000Z"})
+    assert "PROPOSED" in out
+    c2 = t_confirm_rule(_ctx(seeded, roles.PAYMENTS), {"version": "v9"})
+    assert "BINDING" in c2
+
+    ok = t_pay(_ctx(seeded, roles.PAYMENTS),
+               {"to": VENDOR, "amount_usdc": 500, "invoice_ref": "invoice-cap-ok"})
+    assert ok.startswith("PAID")
 
 
 def test_no_memory_tools_degrade_safely() -> None:
@@ -399,3 +445,34 @@ def test_executor_failure_before_broadcast_marks_failed(seeded: str, monkeypatch
     out2 = t_pay(_ctx(seeded, roles.PAYMENTS),
                  {"to": VENDOR, "amount_usdc": 1, "invoice_ref": "invoice-rpc"})
     assert out2.startswith("PAID")
+
+
+def test_expired_proposal_invisible(seeded: str, monkeypatch) -> None:
+    """A proposal older than the TTL is expired: invisible to the money path."""
+    from agent.config import config
+    from agent.toolkit import t_propose_vendor
+    monkeypatch.setattr(config, "rpc_url", "https://sepolia.base.org")
+    monkeypatch.setattr(config, "private_key", "0x" + "1" * 64)
+    monkeypatch.setattr(config, "simulate", False)
+    monkeypatch.setattr(config, "require_registered", True)
+    monkeypatch.setattr(config, "vendor_proposal_ttl_seconds", -1)
+
+    t_propose_vendor(_ctx(seeded, roles.PLANNER), {"address": EVIL, "note": "vendor"})
+    memory = MemoryStore(seeded)
+    st = memory.contact_state(EVIL)
+    assert st is not None and st.get("expired"), "old proposal must be expired"
+    from agent.toolkit import resolve_broadcast_recipient
+    addr, _ = resolve_broadcast_recipient(_ctx(seeded, roles.PAYMENTS), EVIL, None)
+    assert addr is None
+
+
+def test_gateway_external_agent_refused(seeded: str) -> None:
+    """An agent that is not one of ours hits the same guard: banned payee refused."""
+    from agent.gateway_demo import attempt
+    m = MemoryStore(seeded)
+    m.ban_counterparty("0x9a1B2C3d4E5f60718293A4b5C6d7E8F9a0b1C2D3",
+                       aliases=["evil-corp"], reason="drain", actor="planner")
+    out = attempt(m, "external-bot", "inv-gw-1",
+                  "0x9a1B2C3d4E5f60718293A4b5C6d7E8F9a0b1C2D3", 5 * 10 ** 6,
+                  alias="evil-corp")
+    assert "BLOCKED" in out and "banned" in out

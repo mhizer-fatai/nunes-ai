@@ -94,6 +94,9 @@ def t_vendor_status(ctx: ActorCtx, args: dict) -> str:
     except Exception:
         st = None
     if st is not None:
+        if st.get("expired"):
+            return (f"{address}: proposal EXPIRED (older than the proposal TTL) - "
+                    f"invisible to the money path. Re-propose to restart consent.")
         votes = st["votes"]
         quorum = st["quorum_met"]
         if st["payable"]:
@@ -193,6 +196,8 @@ def t_ban_vendor(ctx: ActorCtx, args: dict) -> str:
 
 
 def t_directive(ctx: ActorCtx, args: dict) -> str:
+    """Propose a directive. It becomes binding only after QUORUM_REQUIRED
+    distinct roles confirm it - one agent cannot raise the team's ceiling."""
     memory = _need_memory(ctx)
     if memory is None:
         return "BLOCKED: memory layer deleted - a directive cannot be persisted. Refuse."
@@ -202,8 +207,28 @@ def t_directive(ctx: ActorCtx, args: dict) -> str:
         return "error: directive needs 'title' and 'text'."
     cap = args.get("max_amount_usdc")
     units = _to_units(cap) if cap is not None else None
-    name = memory.set_directive(title, text, max_amount=units, actor=ctx.actor)
-    return f"DIRECTIVE recorded as {name}. It binds every agent until Planner replaces it."
+    name = memory.propose_directive(title, text, max_amount=units, actor=ctx.actor)
+    return (f"DIRECTIVE PROPOSED as {name} (pending). It binds nothing until "
+            f"{QUORUM_REQUIRED} distinct roles confirm it - one agent cannot raise the ceiling.")
+
+
+def t_confirm_directive(ctx: ActorCtx, args: dict) -> str:
+    """Record this role's vote for a pending directive."""
+    memory = _need_memory(ctx)
+    if memory is None:
+        return "BLOCKED: memory layer deleted - a vote cannot be persisted. Refuse."
+    name = str(args.get("name", "") or "").strip()
+    if not name:
+        return "error: confirm_directive needs 'name' (the directive id)."
+    try:
+        result = memory.vote_directive(name, ctx.actor)
+    except ValueError as exc:
+        return f"error: {exc}"
+    votes = result["votes"]
+    if result["binding"]:
+        return f"CONFIRMED - directive {name} is now BINDING ({votes}/{QUORUM_REQUIRED} votes)."
+    return (f"VOTE RECORDED ({votes}/{QUORUM_REQUIRED}) - directive {name} still pending. "
+            f"Needs {QUORUM_REQUIRED - votes} more distinct role(s).")
 
 
 def t_rules(ctx: ActorCtx, args: dict) -> str:
@@ -216,8 +241,9 @@ def t_rules(ctx: ActorCtx, args: dict) -> str:
     lines = []
     for ent in rules:
         body = ent.get("body") or {}
+        state = "BINDING" if ent.get("status") == "active" else f"PENDING ({ent.get('status')})"
         lines.append(
-            f"  rule {ent.get('name')}: cap {fmt_amount(int(body.get('max_amount', 0)))} "
+            f"  rule {ent.get('name')} [{state}]: cap {fmt_amount(int(body.get('max_amount', 0)))} "
             f"from {body.get('effective_from')}"
             + (f" until {body.get('effective_until')}" if body.get("effective_until") else " (open)")
         )
@@ -268,9 +294,29 @@ def t_set_rule(ctx: ActorCtx, args: dict) -> str:
             extra={"kind": "governance-block", "actor": ctx.actor, "version": version},
         )
         return f"BLOCKED: {decision.reason}\n" + "\n".join(f"  recall: {e}" for e in decision.evidence)
-    memory.set_rule(version, effective_from=eff_from, effective_until=eff_until,
-                    max_amount=units, denoms=["USDC"], actor=ctx.actor)
-    return f"RULE {version} set: cap {fmt_amount(units)} from {eff_from}. Written to shared memory."
+    memory.propose_rule(version, effective_from=eff_from, effective_until=eff_until,
+                        max_amount=units, actor=ctx.actor)
+    return (f"RULE {version} PROPOSED: cap {fmt_amount(units)} from {eff_from} (pending). "
+            f"It binds nothing until {QUORUM_REQUIRED} distinct roles confirm it.")
+
+
+def t_confirm_rule(ctx: ActorCtx, args: dict) -> str:
+    """Record this role's vote for a pending spending rule."""
+    memory = _need_memory(ctx)
+    if memory is None:
+        return "BLOCKED: memory layer deleted - a vote cannot be persisted. Refuse."
+    version = str(args.get("version", "") or "").strip()
+    if not version:
+        return "error: confirm_rule needs 'version'."
+    try:
+        result = memory.vote_rule(version, ctx.actor)
+    except ValueError as exc:
+        return f"error: {exc}"
+    votes = result["votes"]
+    if result["binding"]:
+        return f"CONFIRMED - rule {version} is now BINDING ({votes}/{QUORUM_REQUIRED} votes)."
+    return (f"VOTE RECORDED ({votes}/{QUORUM_REQUIRED}) - rule {version} still pending. "
+            f"Needs {QUORUM_REQUIRED - votes} more distinct role(s).")
 
 
 def resolve_broadcast_recipient(ctx: ActorCtx, to: str, alias: str | None) -> tuple[str | None, str | None]:
@@ -498,6 +544,20 @@ SCHEMAS: dict[str, dict] = {
         },
         "required": ["title", "text"],
     },
+    "confirm_directive": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+        },
+        "required": ["name"],
+    },
+    "confirm_rule": {
+        "type": "object",
+        "properties": {
+            "version": {"type": "string"},
+        },
+        "required": ["version"],
+    },
     "rules": _OBJ,
     "latest_directive": _OBJ,
     "set_rule": {
@@ -573,8 +633,16 @@ TOOLS: dict[str, dict] = {
         "run": t_ban_vendor,
     },
     "directive": {
-        "description": "Record a binding planner directive, optionally with a spending cap in USDC. Args: {title: str, text: str, max_amount_usdc?: number}",
+        "description": "Propose a binding planner directive (pending). Becomes binding only after 2 distinct roles confirm it. Args: {title: str, text: str, max_amount_usdc?: number}",
         "run": t_directive,
+    },
+    "confirm_directive": {
+        "description": "Record this role's vote for a pending directive. Args: {name: str}",
+        "run": t_confirm_directive,
+    },
+    "confirm_rule": {
+        "description": "Record this role's vote for a pending spending rule. Args: {version: str}",
+        "run": t_confirm_rule,
     },
     "rules": {
         "description": "List spending rules in memory. Args: {}",
@@ -585,7 +653,7 @@ TOOLS: dict[str, dict] = {
         "run": t_latest_directive,
     },
     "set_rule": {
-        "description": "Set a spending rule (policy). Refused if it exceeds the planner's directive cap. Args: {version: str, max_amount_usdc: number, effective_from?: str (ISO-8601), effective_until?: str}",
+        "description": "Propose a spending rule (pending). Becomes binding only after 2 distinct roles confirm it. Refused if it exceeds the planner's directive cap. Args: {version: str, max_amount_usdc: number, effective_from?: str (ISO-8601), effective_until?: str}",
         "run": t_set_rule,
     },
     "pay": {

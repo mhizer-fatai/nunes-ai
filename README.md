@@ -1,6 +1,6 @@
 # Nunes AI
 
-**Three agents. One shared memory. No contradictions.**
+**Three agents. One shared memory. No contradictions — from the agents.**
 
 Nunes AI is a team of three autonomous agents - **planner** (vendors, bans,
 directives), **policy** (spending rules), **payments** (guarded settlement on
@@ -8,6 +8,12 @@ Base) - that share one persistent Sibyl memory. Every decision, ban, payment,
 and rule is written to that memory, and a guard refuses any action that
 contradicts what a teammate recorded - across sessions. Delete the memory and
 the team becomes strangers: it re-pays, re-approves bans, and enforces nothing.
+
+**Honest boundaries (read before the demo):** the agents act on their own once
+given a task - humans set policy, agents execute it. All live transactions are
+on **Base Sepolia testnet** (mainnet is a config change, not a rewrite). And
+the memory protects against *the agents themselves* - compromised ideas,
+replays, and tricked approvals - not against someone who owns your server.
 
 ## Talk to the team
 

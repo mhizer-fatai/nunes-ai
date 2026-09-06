@@ -367,7 +367,8 @@ class MemoryStore:
 
     def contact_state(self, address: str) -> dict | None:
         """Loop B status for a pending/proposed payee: votes, quorum, timelock
-        remaining. Returns None if the address isn't a pending contact."""
+        remaining. Returns None if the address isn't a pending contact.
+        Proposals older than the TTL are treated as expired (invisible)."""
         norm = normalize_address(address)
         try:
             ent = self.get_entity(CAT_COUNTERPARTY, norm)
@@ -376,6 +377,16 @@ class MemoryStore:
         if ent is None or (ent.get("body") or {}).get("kind") != CONTACT_KIND:
             return None
         body = ent.get("body") or {}
+        try:
+            age_s = (parse_ts(now_iso()) - parse_ts(body.get("proposed_at", body.get("created", now_iso())))).total_seconds()
+        except Exception:
+            age_s = 0
+        ttl = int(getattr(config, "vendor_proposal_ttl_seconds", 86400))
+        if age_s > ttl:
+            return {"status": "expired", "votes": self.counterparty_votes(norm),
+                    "quorum_met": False, "payable": False, "remaining_s": None,
+                    "proposed_by": body.get("proposed_by"), "note": body.get("note"),
+                    "expired": True}
         votes = self.counterparty_votes(norm)
         quorum_met = len(votes) >= QUORUM_REQUIRED
         payable = False
@@ -390,6 +401,145 @@ class MemoryStore:
                 "votes": votes, "quorum_met": quorum_met, "payable": payable,
                 "remaining_s": remaining, "proposed_by": body.get("proposed_by"),
                 "note": body.get("note")}
+
+    # -- cap-raise quorum: directives and rules that raise spending limits ---
+
+    def propose_directive(self, title: str, text: str, max_amount: int | None,
+                          actor: str | None) -> str:
+        """Propose a directive as pending. It becomes binding only after
+        QUORUM_REQUIRED distinct roles confirm it. A single tricked agent
+        cannot raise the team's spending ceiling."""
+        created = now_iso()
+        millis = int(parse_ts(created).timestamp() * 1000)
+        name = f"directive-{millis}"
+        body = {"title": title, "text": text, "max_amount": max_amount,
+                "created": created, "kind": "directive-proposal",
+                "proposed_by": actor, "quorum_at": None}
+        tag, extra_actor = _actor_tag(actor)
+        self.client.set_entity(CAT_DIRECTIVE, name, body, status=STATUS_PENDING)
+        self.write_event(
+            acted=[f"{tag}PROPOSED DIRECTIVE '{title}': {text} - pending, "
+                   f"needs {QUORUM_REQUIRED} role confirmations"],
+            extra={"kind": "directive-proposal", "directive": name, **body, **extra_actor},
+        )
+        if actor:
+            self.vote_directive(name, actor)
+        return name
+
+    def directive_votes(self, name: str) -> list[str]:
+        out: list[str] = []
+        for ent in self.list_entities(CAT_VOTE, limit=500):
+            ename = ent.get("name") or ""
+            if ename.startswith(f"vote:{name}:"):
+                body = ent.get("body") or {}
+                role = body.get("role") or ename.rsplit(":", 1)[-1]
+                if role not in out:
+                    out.append(role)
+        return out
+
+    def vote_directive(self, name: str, actor: str) -> dict:
+        """Record one role's vote for a pending directive. Returns
+        {votes, quorum_met, binding}."""
+        ent = self.get_entity(CAT_DIRECTIVE, name)
+        if ent is None or ent.get("status") not in (STATUS_PENDING, STATUS_VOTED):
+            raise ValueError(f"{name} is not a pending directive")
+        body = ent.get("body") or {}
+        existing = self.get_entity(CAT_VOTE, f"vote:{name}:{actor}")
+        if existing is None:
+            self.client.set_entity(
+                CAT_VOTE, f"vote:{name}:{actor}",
+                {"directive": name, "role": actor, "voted_at": now_iso()},
+                status=STATUS_VOTED,
+            )
+        roles = sorted(self.directive_votes(name))
+        quorum_met = len(roles) >= QUORUM_REQUIRED
+        if quorum_met:
+            body = dict(body)
+            body["quorum_at"] = body.get("quorum_at") or now_iso()
+            self.client.set_entity(CAT_DIRECTIVE, name, body, status="active")
+        self.write_event(
+            acted=[f"{actor.upper()} CONFIRMED DIRECTIVE '{body.get('title', name)}' "
+                   f"({len(roles)}/{QUORUM_REQUIRED} votes)"],
+            extra={"kind": "directive-vote", "directive": name, "role": actor,
+                   "votes": len(roles), "quorum_met": quorum_met},
+        )
+        return {"votes": len(roles), "quorum_met": quorum_met, "binding": quorum_met}
+
+    def directive_state(self, name: str) -> dict | None:
+        """Loop B status for a proposed directive."""
+        try:
+            ent = self.get_entity(CAT_DIRECTIVE, name)
+        except Exception:
+            return None
+        if ent is None:
+            return None
+        body = ent.get("body") or {}
+        if body.get("kind") == "directive-proposal":
+            votes = self.directive_votes(name)
+            quorum_met = len(votes) >= QUORUM_REQUIRED
+            return {"status": "active" if quorum_met else STATUS_PENDING,
+                    "votes": votes, "quorum_met": quorum_met,
+                    "binding": quorum_met, "title": body.get("title")}
+        return None
+
+    def propose_rule(self, version: str, *, effective_from: str,
+                     effective_until: str | None, max_amount: int,
+                     actor: str | None) -> str:
+        """Propose a spending rule as pending. Binding only after quorum."""
+        body = {"version": version, "effective_from": effective_from,
+                "effective_until": effective_until, "max_amount": max_amount,
+                "denoms": ["USDC"], "kind": "rule-proposal",
+                "proposed_by": actor, "quorum_at": None}
+        tag, extra_actor = _actor_tag(actor)
+        self.client.set_entity(CAT_RULE, version, body, status=STATUS_PENDING)
+        self.write_event(
+            acted=[f"{tag}PROPOSED RULE {version}: cap {fmt_amount(max_amount)} - pending, "
+                   f"needs {QUORUM_REQUIRED} role confirmations"],
+            extra={"kind": "rule-proposal", "version": version, **body, **extra_actor},
+        )
+        if actor:
+            self.vote_rule(version, actor)
+        return version
+
+    def rule_votes(self, version: str) -> list[str]:
+        out: list[str] = []
+        for ent in self.list_entities(CAT_VOTE, limit=500):
+            ename = ent.get("name") or ""
+            if ename.startswith(f"vote:rule:{version}:"):
+                body = ent.get("body") or {}
+                role = body.get("role") or ename.rsplit(":", 1)[-1]
+                if role not in out:
+                    out.append(role)
+        return out
+
+    def vote_rule(self, version: str, actor: str) -> dict:
+        """Record one role's vote for a pending rule. Returns
+        {votes, quorum_met, binding}."""
+        ent = self.get_entity(CAT_RULE, version)
+        if ent is None or ent.get("status") not in (STATUS_PENDING, STATUS_VOTED):
+            raise ValueError(f"{version} is not a pending rule")
+        body = ent.get("body") or {}
+        existing = self.get_entity(CAT_VOTE, f"vote:rule:{version}:{actor}")
+        if existing is None:
+            self.client.set_entity(
+                CAT_VOTE, f"vote:rule:{version}:{actor}",
+                {"rule": version, "role": actor, "voted_at": now_iso()},
+                status=STATUS_VOTED,
+            )
+        roles = sorted(self.rule_votes(version))
+        quorum_met = len(roles) >= QUORUM_REQUIRED
+        if quorum_met:
+            body = dict(body)
+            body["quorum_at"] = body.get("quorum_at") or now_iso()
+            self.client.set_entity(CAT_RULE, version, body, status="active")
+            self.set_session_policy(version)
+        self.write_event(
+            acted=[f"{actor.upper()} CONFIRMED RULE {version} "
+                   f"({len(roles)}/{QUORUM_REQUIRED} votes)"],
+            extra={"kind": "rule-vote", "version": version, "role": actor,
+                   "votes": len(roles), "quorum_met": quorum_met},
+        )
+        return {"votes": len(roles), "quorum_met": quorum_met, "binding": quorum_met}
 
     def counterparty_status(self, address: str, alias: str | None = None) -> tuple[str | None, list[str]]:
         """Recall whether a counterparty is banned/approved.
@@ -508,12 +658,13 @@ class MemoryStore:
         return self.client.list_entities(CAT_RULE, limit=500)
 
     def rule_at(self, ts: str) -> dict | None:
-        """Which rule was in force at `ts`? The rule with the latest
-        effective_from that satisfies effective_from <= ts < effective_until
-        (an absent effective_until means open-ended)."""
+        """Which rule was in force at `ts`? Only ACTIVE (quorum-confirmed)
+        rules bind: pending proposals are invisible to the money path."""
         when = parse_ts(ts)
         best: dict | None = None
         for ent in self.list_entities(CAT_RULE, limit=500):
+            if ent.get("status") != "active":
+                continue
             body = ent.get("body") or {}
             eff_from = body.get("effective_from")
             eff_until = body.get("effective_until")
@@ -560,7 +711,11 @@ class MemoryStore:
         return out
 
     def latest_directive(self) -> dict | None:
-        active = [e for e in self.directives() if e.get("status") == "active"]
+        """The latest ACTIVE directive. Pending proposals (kind
+        directive-proposal, status pending) never bind policy."""
+        active = [e for e in self.directives()
+                  if e.get("status") == "active"
+                  and (e.get("body") or {}).get("kind") != "directive-proposal"]
         return active[-1] if active else None
 
     # -- cross-session recall (the agents' shared memory read path) -----------
