@@ -297,7 +297,9 @@ export default function Landing() {
             <h3 style={{ fontSize: 22, marginBottom: 4 }}>How it works — the sub-agents</h3>
             <p className="section-lede" style={{ marginBottom: 26 }}>
               Three specialised agents do the work. They never meet — they coordinate entirely
-              through the shared memory, so no agent can undo what another decided.
+              through the shared memory, so no agent can undo what another decided. New payees and
+              higher caps need two roles to confirm in writing, plus a waiting period — recorded as
+              separate memory entries, counted by code, not by trust.
             </p>
           </Reveal>
           <div className="grid-3">

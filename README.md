@@ -15,6 +15,13 @@ on **Base Sepolia testnet** (mainnet is a config change, not a rewrite). And
 the memory protects against *the agents themselves* - compromised ideas,
 replays, and tricked approvals - not against someone who owns your server.
 
+**On the quorum, honestly:** all three agents share one underlying model with
+different role prompts - so the quorum is not three independent minds. What it
+is: separate vote records in memory, counted by deterministic code, plus a
+timelock. An attack must win in two different role contexts *and* survive the
+lock window, and every vote is journaled for audit. Defense in depth through
+memory mechanics, not model independence.
+
 ## Talk to the team
 
 ```bash
