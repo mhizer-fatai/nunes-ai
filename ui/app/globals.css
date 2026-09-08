@@ -792,3 +792,65 @@ a { color: inherit; }
   .bar i { transition: none; }
   * { scroll-behavior: auto !important; }
 }
+
+/* ==========================================================================
+   Guided-demo console (/demo)
+   ========================================================================== */
+
+.demo-screen { padding: 34px 0 70px; }
+.demo-head { max-width: 880px; margin: 0 auto 26px; }
+.demo-head h1 { font-family: var(--display); font-weight: 500; font-size: 40px; line-height: 1.1; margin: 14px 0 10px; }
+.demo-head .eyebrow { font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--primary); }
+.demo-head p { color: var(--ink-2); max-width: 66ch; margin: 0; }
+
+.console {
+  max-width: 880px; margin: 0 auto;
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: #0b0b0e;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+.console-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: #101014; border-bottom: 1px solid #1c1c22;
+}
+.console-bar .dots { display: flex; gap: 7px; margin-right: 10px; }
+.console-bar .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.console-bar .dots i:nth-child(1) { background: #ff5f57; }
+.console-bar .dots i:nth-child(2) { background: #febc2e; }
+.console-bar .dots i:nth-child(3) { background: #28c840; }
+.console-bar .title {
+  font-family: "JetBrains Mono", monospace; font-size: 12px; color: #8b8b95;
+  letter-spacing: 0.04em;
+}
+.console-bar .spacer { flex: 1; }
+.console-bar .chip {
+  font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--green); border: 1px solid var(--green-line);
+  background: var(--green-soft); padding: 3px 8px; border-radius: 999px;
+}
+.console-body {
+  font-family: "JetBrains Mono", monospace; font-size: 13px; line-height: 1.6;
+  padding: 16px 18px; height: 500px; overflow-y: auto;
+  color: var(--ink);
+}
+.console-body .ln { white-space: pre-wrap; word-break: break-word; }
+.console-body .ln.sep { margin: 10px 0 2px; color: #5c5c66; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; }
+.console-body .ln.sep::before { content: "▍"; color: var(--primary); margin-right: 8px; }
+.console-body .ln.cmd { color: #e8e6df; margin-top: 2px; }
+.console-body .ln.cmd::before { content: "$"; color: var(--primary); font-weight: 700; margin-right: 9px; }
+.console-body .ln.out { color: #a3a1ac; }
+.console-body .ln.allow { color: var(--green); font-weight: 500; }
+.console-body .ln.refuse { color: var(--red); font-weight: 500; }
+.console-body .ln.warn { color: var(--primary); }
+.console-body .ln.dim { color: #64646e; }
+.console-body .ln .addr { color: #9f9ce0; }
+.cursor {
+  display: inline-block; width: 8px; height: 15px; background: var(--primary);
+  vertical-align: -2px; margin-left: 2px;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { to { visibility: hidden; } }
+
+.console-foot { max-width: 880px; margin: 14px auto 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.console-foot .hint { font-size: 13px; color: var(--ink-3); }
