@@ -25,12 +25,32 @@ class BrainUnavailable(BrainError):
     """No API key configured - the brain layer is disabled."""
 
 
+# Obligation references drift. The same invoice arrives as "INV-404",
+# "invoice #404", or "Invoice404" depending on who - or which prompt - is
+# talking. The intent key is minted from the CANONICAL form, so a reworded
+# replay hashes to the same key instead of minting a fresh one and slipping
+# past the double-pay guard. Over-collision fails safe (a refusal);
+# under-collision is a double-pay.
+_REF_SYNONYMS = re.compile(r"\b(invoices?|inv|bills?|references?|refs?)(?![a-z])")
+
+
+def canonicalize_ref(text: str) -> str:
+    """Canonical obligation reference: case-, punctuation-, separator-, and
+    synonym-insensitive ("INV-404" == "invoice #404" == "Invoice404")."""
+    t = (text or "").strip().lower()
+    t = _REF_SYNONYMS.sub("inv", t)
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
 def _hash_intent(instruction: str, *, to: str, amount_units: int, denom: str) -> str:
     """Deterministic obligation key minted by the caller (the brain), never by
-    the model. Same instruction + counterparty + amount => same intent_id, so
-    the guard's idempotency is stable across sessions."""
+    the model. Text and counterparty are canonicalized first, so the same
+    obligation spelled differently - "INV-404" vs "invoice #404", an alias in
+    different case - hashes to the SAME key: a reworded replay cannot mint a
+    fresh intent_id and the guard's idempotency is stable across sessions."""
     digest = hashlib.sha256(
-        f"{instruction.strip().lower()}:{to.lower()}:{amount_units}:{denom}".encode()
+        f"{canonicalize_ref(instruction)}:{canonicalize_ref(to)}:"
+        f"{amount_units}:{denom.strip().upper()}".encode()
     ).hexdigest()[:16]
     return f"inv-{digest}"
 

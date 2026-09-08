@@ -78,7 +78,7 @@ result is for.
 - **Virtuals:** not used - one verified stack (Base) is a x1.15; a decorative second stack
   is worth less than a solid one.
 
-## 6. Build order & status (as of Sep 4)
+## 6. Build order & status (as of Sep 8)
 
 | # | Item | Status |
 | --- | --- | --- |
@@ -87,36 +87,50 @@ result is for.
 | 3 | CLI: pay, ban, approve, set-rule, rules, search, events, wipe, demo | done |
 | 4 | Base Sepolia executor (`agent/chain.py`) | done |
 | 5 | `--no-memory` ablation + fresh-process proof | done (ablation now always simulates) |
-| 6 | Tests (23 passing: guard, brain, team coordination) | done |
+| 6 | Tests | done - **57 passing** (guard, brain, team, x402, ablation, hygiene) |
 | 7 | README + docs/demo.md | done |
-| 8 | Live Base Sepolia transaction | **done** - tx `0xa782a891...47441e`, receipt verified on BaseScan |
+| 8 | Live Base Sepolia transaction | done - tx `0xa782a891...47441e`, receipt verified on BaseScan |
 | 9 | Safety hardening: pending claim, receipt confirm, chain-id check | done |
-| 10 | Real product: 3 LLM agents (planner/policy/payments) + dispatcher + `python -m agent.chat` | **done** - verified live: planner ban -> fresh-session payments refusal |
-| 11 | Memory-gated x402: `buy` tool + guard hook inside the official SDK + demo vendor; live Sepolia purchase + replay refusal | **done** - tx `0x7cf2cb70...f514c8a537`, 6 offline tests, 35 total passing |
-| 12 | 2-5 min demo video + 2 build-in-public posts | **next** |
+| 10 | Real product: 3 LLM agents (planner/policy/payments) + dispatcher + `python -m agent.chat` | done - verified live: planner ban -> fresh-session payments refusal |
+| 11 | Memory-gated x402: `buy` tool + guard hook inside the official SDK + demo vendor; live Sepolia purchase + replay refusal | done - tx `0x7cf2cb70...f514c8a537`, live purchase + replay refusal |
+| 12 | Quantified deletion test: 24-obligation ablation harness + x402 arm (fails closed without memory) | done - `agent/ablation.py`, deterministic, re-runnable |
+| 13 | Loop B consent: new payees need 2-role quorum + timelock; directives/rules need quorum to bind (cap-raise) | done |
+| 14 | Web: Next.js landing + `/app` (chat, shared-memory journal, one-click deletion test) + stdlib backend API | done |
+| 15 | Dispatcher + gateway hardening: deterministic clarification; external-agent drain demo | done |
+| 16 | Idempotency on canonical obligation keys (reworded replays refused) + memory-poisoning hygiene (write-time sanitization + untrusted-memory read fence) | done |
+| 17 | 2-5 min demo video + 2 build-in-public posts | **next** (deadline Sep 10, 23:59 UTC) |
 
 ## 7. Repo layout
 
 ```
 agent/
   memory.py   Sibyl five-tier wrapper (WARM/COLD/HOT/FTS5) + directives + recall
+              + write-time text hygiene (sanitize_memo / sanitize_alias)
   policy.py   PayRequest + GuardDecision
   guard.py    the memory gate + decision journaling + cross-agent governance
   chain.py    Base settlement (ERC-20 transfer, RPC via urllib)
-  brain.py    single-shot LLM intent extraction (legacy `brain` command)
+  brain.py    intent extraction + canonical obligation hashing (legacy `brain` command)
   llm.py      OpenAI-compatible transport incl. native function calling
   roles.py    the three agents: prompts, tool belts, dispatcher contract
-  toolkit.py  all agent tools (guarded writes, settlement, recall)
+  toolkit.py  all agent tools (guarded writes, settlement, recall, untrusted-read fence)
   runtime.py  the agent loop + dispatcher
   chat.py     the product: `python -m agent.chat`
   cli.py      ops surface (pay/ban/rule/search/events/wipe/demo)
-tests/test_guard.py  tests/test_brain.py  tests/test_team.py (23 passing)
+  ablation.py quantified deletion test: 24-obligation payments arm + x402 arm
+  gateway_demo.py  external-agent attack demo (a tricked stranger through the gateway)
+  x402store.py     memory-gated x402: guard hook inside the official SDK
+  x402server.py    demo x402 vendor (paywalled feed) for the live buy loop
+  web.py      stdlib backend: /api/chat + /api/journal + /api/status + /api/ablation
+ui/          Next.js landing page + /app (chat, shared-memory journal, deletion test)
+web/         stdlib single-page frontend served by agent/web.py
+tests/       test_guard.py test_brain.py test_team.py test_x402.py
+             test_ablation.py test_hygiene.py (57 passing)
 docs/demo.md
 ```
 
 ## 8. Submission checklist
 
-- [ ] public repo (Apache-2.0)
+- [x] public repo (Apache-2.0) - https://github.com/mhizer-fatai/nunes-ai
 - [ ] 2-5 min demo video with an explicit fresh-session recall moment
-- [ ] README
-- [ ] 2 build-in-public posts
+- [x] README (load-bearing map, partner-stack sections, Prior Work declaration)
+- [ ] 2 build-in-public posts (tag @sibylcap and Base)

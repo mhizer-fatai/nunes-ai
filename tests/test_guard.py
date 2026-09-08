@@ -49,6 +49,31 @@ def test_idempotency_across_fresh_sessions(db: str, seeded: None) -> None:
     assert "double-spend" in d2.reason
 
 
+def test_reworded_replay_is_refused(db: str, seeded: None) -> None:
+    """The obligation key is canonical: the same invoice spelled differently
+    ("invoice-404" paid, "Invoice #404" replayed) must hit the SAME paid
+    marker in a fresh session - not mint a fresh intent_id and pay twice."""
+    from agent.brain import _hash_intent
+
+    m = MemoryStore(db)
+    guard = Guard(m)
+    paid_id = _hash_intent("invoice-404", to=VENDOR, amount_units=5 * DEC, denom="USDC")
+    req = PayRequest(intent_id=paid_id, counterparty=VENDOR,
+                     amount=5 * DEC, incurred_at="2026-08-30T10:00:00.000Z")
+    d1 = guard.check(req)
+    assert d1.allowed
+    guard.record_allowed_and_paid(req, "0xabc", d1)
+
+    reworded_id = _hash_intent("Invoice #404", to=VENDOR, amount_units=5 * DEC, denom="USDC")
+    assert reworded_id == paid_id  # canonicalization, not luck
+
+    second = Guard(MemoryStore(db))  # fresh session, same persistent memory
+    d2 = second.check(PayRequest(intent_id=reworded_id, counterparty=VENDOR,
+                                 amount=5 * DEC, incurred_at="2026-09-02T10:00:00.000Z"))
+    assert not d2.allowed
+    assert "double-spend" in d2.reason
+
+
 def test_banned_counterparty_via_alias(db: str, seeded: None) -> None:
     """A banned vendor reappearing under a NEW address is still refused:
     FTS5 recall of the alias trail in the journal."""

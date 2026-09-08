@@ -28,15 +28,15 @@ $db = Join-Path $env:TEMP "nunes-ai-proof.db"
 
 # P1 - seed rule, then pay (expect ALLOW)
 python -m agent.cli --db $db set-rule --version v1 --effective-from 2026-08-01T00:00:00.000Z --max-amount 100
-python -m agent.cli --db $db pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B --amount 5
+python -m agent.cli --db $db pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3 --amount 5
 
 # P2 - fresh process, same db, replays inv-900 (expect BLOCK double-spend)
-python -m agent.cli --db $db pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B --amount 5
+python -m agent.cli --db $db pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3 --amount 5
 
 # P3 - --no-memory ablation (expect ALLOW again = the double-pay)
 # Note: with live credentials configured, the ablation REFUSES to broadcast
 # real funds and falls back to simulation - it can never spend unguarded.
-python -m agent.cli --no-memory pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3B --amount 5
+python -m agent.cli --no-memory pay --intent inv-900 --to 0x8f42b6a2C9d5F2A1b7C3e5D9F0a2b6C4D8e1F2a3 --amount 5
 ```
 
 ## Real onchain settlement

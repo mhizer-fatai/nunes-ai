@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -85,6 +86,57 @@ def _actor_tag(actor: str | None) -> tuple[str, dict]:
     if not actor:
         return "", {}
     return f"{actor.upper()} ", {"actor": actor}
+
+
+# -- untrusted-text hygiene --------------------------------------------------
+#
+# Everything an agent recalls from memory is injected back into another
+# agent's prompt. Free-text fields (journal notes, ban reasons, vendor
+# aliases, directive texts) are therefore an injection surface: a poisoned
+# note or an attacker-chosen alias could carry "ignore the ban" into a future
+# session. The money path is deterministic, but governance *reasoning* reads
+# this text - so it is neutralized at write time and fenced at read time.
+
+# Imperative phrasing that turns recalled data into an instruction.
+_INJECTION_PATTERNS = re.compile(
+    r"(?i)\b(ignore|disregard|forget|override|bypass|skip|unban)\s+(all|any|the|this|that|your|previous|prior|earlier|standing|recorded|memory|ban|bans|rule|rules|directive|directives|instruction|instructions|cap|caps|limit|limits|guard|check|checks)"
+    r"|\b(?i:(system|assistant|tool)\s*:|system\s*(prompt|message|note)\s*:)"
+    r"|\b(?i:(planner|policy|payments)\s+(note|confirmed|approved|banned)\s*:)"
+    r"|\b(?i:new\s+instructions?\s*:)"
+    r"|\b(?i:you\s+(are|must|will|should)\s+(now\s+)?(authorized|allowed|required|to\s+pay|pay))"
+    r"|\b(?i:(do\s+not|don't)\s+(block|refuse|ban))"
+    r"|\b(?i:act\s+as\s+if)"
+)
+_REDACTED = "[redacted-instruction]"
+_MEMO_MAX = 300
+_ALIAS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,63}$")
+
+
+def sanitize_memo(text: str) -> str:
+    """Make free text safe to recall into a future agent prompt.
+
+    1. collapse whitespace and strip control characters - a note cannot forge
+       journal structure (fake headers, fake tool output, fake agent lines);
+    2. redact imperative phrasing ("ignore the ban", "you are authorized to
+       pay", "system:") - recalled text stays data, never becomes an order;
+    3. truncate - long jailbreak payloads are clipped before storage.
+
+    Over-redaction only degrades note fidelity; under-redaction is an
+    injection. Fails safe.
+    """
+    t = " ".join(str(text or "").split())
+    t = _INJECTION_PATTERNS.sub(_REDACTED, t)
+    return t[:_MEMO_MAX]
+
+
+def sanitize_alias(alias: str) -> str:
+    """Vendor aliases are attacker-choosable names. Allow only a flat charset
+    (letters, digits, dots, dashes, underscores, spaces) and redact imperative
+    phrasing, so an alias is a label - never a sentence aimed at the reader."""
+    t = " ".join(str(alias or "").split())
+    if not _ALIAS_RE.match(t):
+        t = _REDACTED if t else t
+    return sanitize_memo(t)
 
 
 class MemoryStore:
@@ -241,7 +293,8 @@ class MemoryStore:
         """Ban an address and every alias it is known under, so a banned vendor
         re-emerging under a NEW address but the same alias is still refused."""
         norm = normalize_address(address)
-        aliases = [a.lower() for a in aliases]
+        aliases = [sanitize_alias(a.lower()) for a in aliases]
+        reason = sanitize_memo(reason)
         tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(
             CAT_COUNTERPARTY,
@@ -264,7 +317,8 @@ class MemoryStore:
     def approve_counterparty(self, address: str, aliases: list[str] | tuple[str, ...] = (), note: str = "",
                              actor: str | None = None) -> None:
         norm = normalize_address(address)
-        aliases = [a.lower() for a in aliases]
+        aliases = [sanitize_alias(a.lower()) for a in aliases]
+        note = sanitize_memo(note)
         tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(
             CAT_COUNTERPARTY,
@@ -292,7 +346,8 @@ class MemoryStore:
         QUORUM_REQUIRED confirmation votes from distinct roles AND the timelock
         passes. One compromised agent cannot make a fresh address payable."""
         norm = normalize_address(address)
-        aliases = [a.lower() for a in aliases]
+        aliases = [sanitize_alias(a.lower()) for a in aliases]
+        note = sanitize_memo(note)
         body = {"address": norm, "aliases": aliases, "note": note,
                 "kind": CONTACT_KIND, "proposed_by": actor, "proposed_at": now_iso(),
                 "quorum_at": None, "payable_at": None}
@@ -325,7 +380,8 @@ class MemoryStore:
         if existing is None:
             self.client.set_entity(
                 CAT_VOTE, f"vote:{norm}:{actor}",
-                {"address": norm, "role": actor, "voted_at": now_iso(), "note": note},
+                {"address": norm, "role": actor, "voted_at": now_iso(),
+                 "note": sanitize_memo(note)},
                 status=STATUS_VOTED,
             )
 
@@ -412,6 +468,8 @@ class MemoryStore:
         created = now_iso()
         millis = int(parse_ts(created).timestamp() * 1000)
         name = f"directive-{millis}"
+        # Directive text is recalled verbatim into future prompts - sanitize.
+        title, text = sanitize_memo(title), sanitize_memo(text)
         body = {"title": title, "text": text, "max_amount": max_amount,
                 "created": created, "kind": "directive-proposal",
                 "proposed_by": actor, "quorum_at": None}
@@ -691,6 +749,8 @@ class MemoryStore:
         created = now_iso()
         millis = int(parse_ts(created).timestamp() * 1000)
         name = f"directive-{millis}"
+        # Directive text is recalled verbatim into future prompts - sanitize.
+        title, text = sanitize_memo(title), sanitize_memo(text)
         body = {"title": title, "text": text, "max_amount": max_amount, "created": created}
         tag, extra_actor = _actor_tag(actor)
         self.client.set_entity(CAT_DIRECTIVE, name, body, status="active")
@@ -754,6 +814,7 @@ class MemoryStore:
 
     def journal_note(self, actor: str, text: str, **extra) -> None:
         """Freeform journal entry by an agent - a teammate's reasoning that the
-        next session must be able to read back."""
-        self.write_event(acted=[f"{actor.upper()} NOTE: {text}"],
+        next session must be able to read back. Sanitized on write: recalled
+        text is data for a future prompt, never instructions."""
+        self.write_event(acted=[f"{actor.upper()} NOTE: {sanitize_memo(text)}"],
                          extra={"kind": "note", "actor": actor, **extra})
