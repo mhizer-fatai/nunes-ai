@@ -162,6 +162,14 @@ class MemoryStore:
     def db_path(self) -> Path:
         return self._db_path
 
+    def close(self) -> None:
+        """Release the underlying sqlite handle. Needed before the db file is
+        deleted on Windows, which refuses to remove an open file."""
+        try:
+            self.client.storage.close()
+        except Exception:
+            pass
+
     # -- raw client passthroughs ----------------------------------------------
 
     def write_event(self, *, evaluated=None, acted=None, forward=None, extra=None) -> str:

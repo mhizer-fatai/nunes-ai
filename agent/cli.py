@@ -345,6 +345,7 @@ def cmd_wipe(args: argparse.Namespace) -> int:
         print("error: --no-memory cannot be wiped")
         return 1
     path = memory.db_path
+    memory.close()  # Windows cannot delete an open sqlite file
     for suffix in ("", "-wal", "-shm"):
         target = str(path) + suffix
         if os.path.exists(target):
