@@ -3,7 +3,7 @@ import "./globals.css";
 export const metadata = {
   title: "Nunes AI — the memory that makes an AI team safe with money",
   description:
-    "Three AI agents — Planner, Policy, Payments — share one persistent memory that refuses whatever contradicts a past decision. Real USDC on Base.",
+    "Three AI agents — Planner, Policy, Payments — share one persistent memory that refuses whatever contradicts a past decision. Real USDC on the Base Sepolia testnet.",
 };
 
 /* Set the theme before first paint so there is no light/dark flash.

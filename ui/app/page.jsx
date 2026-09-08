@@ -85,7 +85,7 @@ const AGENTS = [
     role: "Payments",
     icon: "●",
     what: "does the paying",
-    how: "settles USDC on Base and buys x402 paywalls — refusing anything memory forbids, citing the record.",
+    how: "settles USDC on the Base Sepolia testnet and buys x402 paywalls — refusing anything memory forbids, citing the record.",
   },
 ];
 
@@ -103,7 +103,7 @@ const STEPS = [
   {
     n: "03",
     t: "Refuse or pay — never both, never twice",
-    d: "A deterministic guard disposes what the model proposes. Replays, banned payees and over-cap demands are refused with evidence. And when it pays, it's real USDC on Base with a receipt kept forever.",
+    d: "A deterministic guard disposes what the model proposes. Replays, banned payees and over-cap demands are refused with evidence. And when it pays, it settles real USDC on the Base Sepolia testnet with a receipt kept forever.",
   },
 ];
 
@@ -134,7 +134,7 @@ export default function Landing() {
         <div className="hero-grid" aria-hidden="true" />
         <div className="wrap">
           <Reveal>
-            <div className="eyebrow">Sibyl Labs Hackathon · live on Base</div>
+            <div className="eyebrow">Sibyl Labs Hackathon · built on Base Sepolia testnet</div>
           </Reveal>
           <Reveal delay={70}>
             <h1>
@@ -310,9 +310,9 @@ export default function Landing() {
       <section className="section-sm" id="live">
         <div className="wrap">
           <Reveal>
-            <div className="eyebrow">Live on Base</div>
+            <div className="eyebrow">Live on Base Sepolia (testnet)</div>
             <h2 className="section-title" style={{ fontSize: 26, marginBottom: 20 }}>
-              Real transactions, not screenshots.
+              Real testnet transactions, not screenshots.
             </h2>
           </Reveal>
           <Reveal delay={80}>
