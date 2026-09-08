@@ -123,6 +123,43 @@ def api_status() -> tuple[int, bytes]:
     })
 
 
+def api_stats() -> tuple[int, bytes]:
+    """Live aggregates from shared memory for stat cards. All real counts,
+    no invented metrics: journal size, blocks, payments, USDC moved."""
+    try:
+        memory = _memory()
+        events = memory.read_events(limit=2000)
+        blocked = paid = 0
+        usdc_units = 0
+        txs: list[dict] = []
+        for ent in memory.list_entities("payment", limit=500):
+            body = ent.get("body") or {}
+            if ent.get("status") == "paid":
+                paid += 1
+                try:
+                    usdc_units += int(body.get("amount", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+                tx = body.get("tx_hash")
+                if tx and str(tx).startswith("0x"):
+                    txs.append({"tx": tx, "to": body.get("counterparty"),
+                                "amount": body.get("amount")})
+        for ev in events:
+            kind = (ev.get("extra") or {}).get("kind", "")
+            if kind in ("block", "governance-block", "recipient-block"):
+                blocked += 1
+    except Exception as exc:
+        return 500, _err("MEMORY_ERROR", f"stats unreadable: {exc}")
+    txs.sort(key=lambda t: str(t["tx"]))
+    return 200, _json({
+        "calls": len(events),
+        "blocked": blocked,
+        "paid": paid,
+        "usdc": usdc_units / 1_000_000,
+        "txs": txs[-6:],
+    })
+
+
 def api_ablation(body: dict) -> tuple[int, bytes]:
     try:
         trials = int(body.get("trials", 1))
@@ -169,6 +206,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(status, body)
             elif parsed.path == "/api/status":
                 status, body = api_status()
+                self._send_json(status, body)
+            elif parsed.path == "/api/stats":
+                status, body = api_stats()
                 self._send_json(status, body)
             else:
                 self._send_json(404, _err("NOT_FOUND", f"no such endpoint: {parsed.path}"))

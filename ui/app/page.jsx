@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Nav from "./components/Nav";
+import StatsRow from "./components/StatsRow";
 import { Reveal, ScrollProgress } from "./components/Motion";
 
 const NAV_LINKS = [
@@ -133,91 +134,35 @@ export default function Landing() {
         <div className="hero-grid" aria-hidden="true" />
         <div className="wrap">
           <Reveal>
-            <span
-              className="hero-badge"
-              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-            >
-              <span
-                style={{ width: 7, height: 7, borderRadius: 999, background: "var(--green)", display: "inline-block" }}
-              />
-              The money layer AI agents can't outsmart
-            </span>
+            <div className="eyebrow">Sibyl Labs Hackathon · live on Base</div>
           </Reveal>
           <Reveal delay={70}>
             <h1>
-              Let your AI agents send money — <br />
-              without getting robbed, double-charged, or tricked.
+              Three AI agents keep receipts.
+              <br />
+              <span className="line2">Which one has earned your trust?</span>
             </h1>
           </Reveal>
           <Reveal delay={140}>
             <p className="hero-lede">
-              AI agents are holding wallets now — paying invoices, buying services on x402. But
-              they don't remember their own decisions, so they get drained, pay twice, and re-approve
-              what they already rejected. Nunes AI gives them the memory that stops all three.
+              Same wallet, same rules, same memory. Every ban, cap and payment costs a decision —
+              and every decision is written down. Then the process dies, and the only thing that
+              survives is what it wrote to memory.
             </p>
           </Reveal>
           <Reveal delay={200}>
             <div className="cta-row">
               <Link className="btn btn-primary" href="/app">
-                Start free
+                See what they remembered →
               </Link>
-              <Link className="btn btn-ghost" href="#how">
-                How it works
+              <Link className="btn btn-ghost" href="#proof">
+                Delete the memory
               </Link>
             </div>
-            <div className="hero-caption">Real USDC on Base · memory-gated x402 · Apache-2.0</div>
           </Reveal>
 
           <Reveal delay={260}>
-            <div className="preview">
-              <div className="preview-top">
-                Your agents, guarded
-                <span className="pill ok live">
-                  <span className="dot" /> 1 shared memory
-                </span>
-              </div>
-              <div className="preview-grid">
-                <div className="preview-side">
-                  <div>Payments</div>
-                  <div>Policy</div>
-                  <div>Planner</div>
-                  <div>Shared memory</div>
-                  <div className="on">Money guard</div>
-                </div>
-                <div className="preview-main">
-                  <div className="preview-stats">
-                    <div className="pstat">
-                      <div className="n">3</div>
-                      <div className="l">Agents sharing one memory</div>
-                    </div>
-                    <div className="pstat">
-                      <div className="n">0</div>
-                      <div className="l">Pays a banned payee · ever</div>
-                      <div className="d up">guard refuses, evidence cited</div>
-                    </div>
-                    <div className="pstat">
-                      <div className="n">0</div>
-                      <div className="l">Pays an invoice twice</div>
-                      <div className="d up">replays blocked by memory</div>
-                    </div>
-                  </div>
-                  <div className="preview-rows">
-                    <div className="prow">
-                      <span className="chip block">refused</span> evil-corp payment blocked — banned in memory
-                      <span className="st no">BLOCKED</span>
-                    </div>
-                    <div className="prow">
-                      <span className="chip rule">rule</span> Policy cap 5 USDC · 0.05 USDC payment allowed
-                      <span className="st ok">ALLOWED</span>
-                    </div>
-                    <div className="prow">
-                      <span className="chip x402">x402</span> feed purchase · 0.01 USDC on Base
-                      <span className="st ok">SETTLED</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <StatsRow />
           </Reveal>
         </div>
       </section>
