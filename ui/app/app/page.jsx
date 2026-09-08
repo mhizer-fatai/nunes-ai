@@ -49,9 +49,6 @@ export default function AppScreen() {
       <div className="wrap">
         <div className="app-bar">
           <h1>Team workspace</h1>
-          <Link className="btn btn-ghost btn-sm" href="/demo">
-            Guided demo
-          </Link>
           <div className="spacer" />
           <span
             className={"pill " + (memOk ? "ok" : "warn")}

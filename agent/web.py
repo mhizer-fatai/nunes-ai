@@ -9,7 +9,6 @@ existing agent code:
   GET  /api/journal?limit=N               -> {events: [{ts, actor, kind, text, tx}]}
   GET  /api/status                         -> {memory, chain, llm, rules, directives, counts}
   POST /api/ablation   {trials=1}          -> quantified deletion-test report (temp db)
-  POST /api/demo                          -> guided-demo transcript (temp db, forced sim)
 
 Errors always look like {"error": {"code": ..., "message": ...}}.
 Inputs are validated at the boundary; the agent core is never trusted with
@@ -18,18 +17,13 @@ raw shapes. Binds 127.0.0.1 by default (local demo surface).
 
 import argparse
 import json
-import os
-import subprocess
-import sys
-import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import config
 
-ROOT = Path(__file__).resolve().parent.parent
-WEB_DIR = ROOT / "web"
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 BASESCAN_TX = "https://sepolia.basescan.org/tx/"
 
 CONTENT_TYPES = {
@@ -188,104 +182,6 @@ def api_ablation(body: dict) -> tuple[int, bytes]:
     })
 
 
-_BANNED = "0x7b8Bca2C6c59fB7E5e96d7f1E1e5C5a0a6b1B222"
-_VENDOR = "0xeB3DD0faF85FC7C6aB13B41cC9371b1FE0797842"
-_DEMO_DB: Path | None = None
-
-
-def _demo_db() -> Path:
-    """A throwaway db for the guided demo - never the live ~/.sibyl-memory."""
-    db = Path(tempfile.gettempdir()) / "nunes-ui-demo.db"
-    for suffix in ("", "-wal", "-shm"):
-        try:
-            os.remove(str(db) + suffix)
-        except FileNotFoundError:
-            pass
-    return db
-
-
-def _cli(argv: list[str]) -> str:
-    """Run the real agent CLI against the demo db, forcing simulation so no
-    real funds can ever be broadcast from a demo."""
-    env = dict(os.environ)
-    env["NUNES_AI_SIMULATE"] = "1"
-    cmd = [sys.executable, "-m", "agent.cli", "--db", str(_DEMO_DB)] + argv
-    try:
-        res = subprocess.run(cmd, cwd=str(ROOT), env=env, capture_output=True,
-                             text=True, timeout=30)
-    except Exception as exc:
-        return f"error: demo step failed to run: {exc}"
-    text = (res.stdout or "").strip("\n") or (res.stderr or "").strip("\n")
-    return text or f"(exit {res.returncode})"
-
-
-def _guided_demo() -> dict:
-    """Execute the guided story against a fresh throwaway db and return the
-    transcript for the UI console: the guard refusing what memory forbids,
-    then the ablation paying the same request when memory is deleted."""
-    db = _demo_db()
-    global _DEMO_DB
-    _DEMO_DB = db
-
-    def step(banner: str, cmd: str, argv: list[str]) -> dict:
-        return {"banner": banner, "cmd": cmd, "out": _cli(argv)}
-
-    steps = [
-        step(
-            "SESSION 1 — policy writes the spending rule the guard will enforce",
-            f"python -m agent.cli set-rule --version v1 --max-amount 100 --effective-from 2026-08-01T00:00:00.000Z",
-            ["set-rule", "--version", "v1",
-             "--effective-from", "2026-08-01T00:00:00.000Z", "--max-amount", "100"],
-        ),
-        step(
-            "SESSION 1 — payments settles invoice inv-900 (5 USDC)",
-            f"python -m agent.cli pay --intent inv-900 --to {_VENDOR} --amount 5",
-            ["pay", "--intent", "inv-900", "--to", _VENDOR, "--amount", "5"],
-        ),
-        step(
-            "SESSION 2 — a genuinely fresh process, the same invoice returns",
-            f"python -m agent.cli pay --intent inv-900 --to {_VENDOR} --amount 5",
-            ["pay", "--intent", "inv-900", "--to", _VENDOR, "--amount", "5"],
-        ),
-        step(
-            "SESSION 3 — the planner bans the drainer (alias evil-corp)",
-            f"python -m agent.cli ban --address {_BANNED} --aliases evil-corp --reason \"drained a partner wallet\"",
-            ["ban", "--address", _BANNED, "--aliases", "evil-corp",
-             "--reason", "drained a partner wallet"],
-        ),
-        step(
-            "SESSION 4 — a fresh process is asked to pay the banned vendor",
-            f"python -m agent.cli pay --intent inv-77 --to {_BANNED} --amount 2",
-            ["pay", "--intent", "inv-77", "--to", _BANNED, "--amount", "2"],
-        ),
-        step(
-            "DELETE THE MEMORY",
-            "python -m agent.cli wipe",
-            ["wipe"],
-        ),
-        step(
-            "NO MEMORY — the exact same request, unguarded",
-            f"python -m agent.cli --no-memory pay --intent inv-77 --to {_BANNED} --amount 2",
-            ["--no-memory", "pay", "--intent", "inv-77", "--to", _BANNED, "--amount", "2"],
-        ),
-    ]
-    for suffix in ("", "-wal", "-shm"):
-        try:
-            os.remove(str(db) + suffix)
-        except FileNotFoundError:
-            pass
-    return {"steps": steps, "sim": True,
-            "note": "executed against a throwaway memory db with settlement forced to "
-                    "simulation - nothing shown touches live memory or broadcasts funds"}
-
-
-def api_demo() -> tuple[int, bytes]:
-    try:
-        return 200, _json(_guided_demo())
-    except Exception as exc:
-        return 500, _err("DEMO_ERROR", f"guided demo failed: {exc}")
-
-
 class Handler(BaseHTTPRequestHandler):
     server_version = "nunes-web"
 
@@ -341,8 +237,6 @@ class Handler(BaseHTTPRequestHandler):
             status, out = api_chat(body)
         elif parsed.path == "/api/ablation":
             status, out = api_ablation(body)
-        elif parsed.path == "/api/demo":
-            status, out = api_demo()
         else:
             status, out = 404, _err("NOT_FOUND", f"no such endpoint: {parsed.path}")
         self._send_json(status, out)

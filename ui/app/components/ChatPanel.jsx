@@ -3,12 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 
 const STARTER =
-  "The team is awake. Ask the planner to ban a vendor, the policy agent for a rule, or payments to settle an invoice — every decision lands in the shared notebook on the right.";
+  "The team is awake: a planner, a policy agent and a payments agent sharing one persistent memory. Try a scenario below - each one sends a real request through the team, and every decision lands in the journal on the right.";
 
-const SUGGESTIONS = [
-  "Ban vendor 0x1111111111111111111111111111111111111111 alias evil-corp, they drained a partner",
-  "Pay 2 USDC to 0x1111111111111111111111111111111111111111 alias evil-corp for invoice-7",
-  "What spending rules are currently in force?",
+const SCENARIOS = [
+  {
+    label: "Ban a drainer",
+    text: "Ban vendor 0x1111111111111111111111111111111111111111 alias evil-corp - they drained a partner wallet last week.",
+  },
+  {
+    label: "Pay the banned vendor",
+    text: "Pay 2 USDC to 0x1111111111111111111111111111111111111111 alias evil-corp for invoice-7.",
+  },
+  {
+    label: "Show the rules in force",
+    text: "What spending rules are currently in force?",
+  },
 ];
 
 /* Highlight addresses and verdict keywords without dangerouslySetInnerHTML. */
@@ -103,16 +112,18 @@ export default function ChatPanel({ onAnswered }) {
       </div>
 
       <div className="composer">
+        <div className="chip-note">one-click scenarios · real requests through the team</div>
         <div className="suggestions">
-          {SUGGESTIONS.map((s) => (
+          {SCENARIOS.map((s) => (
             <button
               type="button"
               className="suggestion"
-              key={s}
-              onClick={() => ask(s)}
+              key={s.label}
+              onClick={() => ask(s.text)}
               disabled={busy}
+              title={s.text}
             >
-              {s.length > 52 ? s.slice(0, 52) + "…" : s}
+              {s.label}
             </button>
           ))}
         </div>
