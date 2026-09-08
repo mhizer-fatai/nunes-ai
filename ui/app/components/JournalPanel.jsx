@@ -42,7 +42,7 @@ export default function JournalPanel({ tick }) {
       }
     }
     load();
-    const id = setInterval(load, 15000);
+    const id = setInterval(load, 5000);
     return () => {
       alive = false;
       clearInterval(id);

@@ -5,7 +5,7 @@ import Link from "next/link";
 import Nav from "../components/Nav";
 import { ScrollProgress } from "../components/Motion";
 import ChatPanel from "../components/ChatPanel";
-import JournalPanel from "../components/JournalPanel";
+import MemoryTail from "../components/MemoryTail";
 import AblationPanel from "../components/AblationPanel";
 
 export default function AppScreen() {
@@ -65,7 +65,7 @@ export default function AppScreen() {
         <div className="app-main">
           <ChatPanel onAnswered={refresh} />
           <div className="side-col">
-            <JournalPanel tick={tick} />
+            <MemoryTail tick={tick} />
             <AblationPanel />
           </div>
         </div>
