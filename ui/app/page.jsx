@@ -339,13 +339,9 @@ export default function Landing() {
         <div className="wrap memory-home">
           <Reveal>
             <div className="eyebrow">Live from shared memory</div>
-            <h2 className="section-title" style={{ fontSize: 26, marginBottom: 6 }}>
+            <h2 className="section-title" style={{ fontSize: 26, marginBottom: 20 }}>
               The notebook writes itself.
             </h2>
-            <p style={{ color: "var(--ink-2)", maxWidth: "64ch", marginTop: 0 }}>
-              Every decision the team has made — and every one you make in the app — lands here,
-              live, straight out of the shared notebook.
-            </p>
           </Reveal>
           <Reveal delay={60}>
             <JournalPanel />

@@ -9,6 +9,7 @@ existing agent code:
   GET  /api/journal?limit=N               -> {events: [{ts, actor, kind, text, tx}]}
   GET  /api/status                         -> {memory, chain, llm, rules, directives, counts}
   POST /api/ablation   {trials=1}          -> quantified deletion-test report (temp db)
+  GET  /api/activity?since=N              -> live request-process log (dispatcher/agent/tool/memory)
 
 Errors always look like {"error": {"code": ..., "message": ...}}.
 Inputs are validated at the boundary; the agent core is never trusted with
@@ -123,6 +124,19 @@ def api_status() -> tuple[int, bytes]:
     })
 
 
+def api_activity(query: dict) -> tuple[int, bytes]:
+    try:
+        since = int(query.get("since", ["0"])[0])
+    except (ValueError, TypeError, IndexError):
+        since = 0
+    try:
+        from .trace import read_since
+        items, next_cursor = read_since(max(0, since))
+    except Exception as exc:
+        return 500, _err("TRACE_ERROR", f"activity log unreadable: {exc}")
+    return 200, _json({"events": items, "next": next_cursor})
+
+
 def api_stats() -> tuple[int, bytes]:
     """Live aggregates from shared memory for stat cards. All real counts,
     no invented metrics: journal size, blocks, payments, USDC moved."""
@@ -209,6 +223,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(status, body)
             elif parsed.path == "/api/stats":
                 status, body = api_stats()
+                self._send_json(status, body)
+            elif parsed.path == "/api/activity":
+                status, body = api_activity(parse_qs(parsed.query))
                 self._send_json(status, body)
             else:
                 self._send_json(404, _err("NOT_FOUND", f"no such endpoint: {parsed.path}"))

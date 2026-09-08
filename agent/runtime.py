@@ -61,6 +61,11 @@ def run_agent(role: str, ctx: ActorCtx, task: str, *,
         {"role": "user", "content": task},
     ]
     steps: list[dict] = []
+    try:
+        from .trace import emit as _emit
+        _emit("agent", f"{role} agent is working — recalling shared memory and deciding")
+    except Exception:
+        pass
 
     def _run_tool(name: str, args: dict) -> str:
         if not isinstance(args, dict):
@@ -68,6 +73,12 @@ def run_agent(role: str, ctx: ActorCtx, task: str, *,
         if name not in allowed or name not in TOOLS:
             return (f"Unknown or forbidden tool '{name}'. Your tools are: "
                     f"{', '.join(roles.ROLE_TOOLS[role])}.")
+        try:
+            from .trace import emit as _emit
+            brief = json.dumps(args, default=str)
+            _emit("tool", f"{role} → {name}({brief[:180]})")
+        except Exception:
+            pass
         try:
             return str(TOOLS[name]["run"](ctx, args))[:3000]
         except Exception as exc:  # tools must never crash the loop
@@ -135,6 +146,7 @@ def route(task: str, *, complete_fn=complete) -> dict:
     clarification is always our own text naming the three teammates - never
     the model's free-text ask, which reads as a bland canned reply.
     """
+    from .trace import emit as _emit
     try:
         raw = complete_fn([
             {"role": "system", "content": roles._DISPATCH_PROMPT},
@@ -143,6 +155,7 @@ def route(task: str, *, complete_fn=complete) -> dict:
         data = _extract_json(raw)
         role = data.get("role")
         if role in roles.ROLE_ORDER:
+            _emit("router", f"dispatcher routed the request to the {role} agent")
             return {"role": role, "ask": ""}
     except LLMError:
         pass
@@ -157,8 +170,10 @@ def route(task: str, *, complete_fn=complete) -> dict:
     }
     best = max(scores, key=lambda k: scores[k])
     if scores[best] == 0:
+        _emit("router", "not a routable action - asked the user to name a ban, rule or payment")
         return {"role": None, "ask": (
             "I can send you to the right teammate - planner (vendors, bans), "
             "policy (spending rules), or payments (pay an invoice). "
             "Try: 'ban vendor …', 'set a rule …', or 'pay …'.")}
+    _emit("router", f"dispatcher routed the request to the {best} agent")
     return {"role": best, "ask": ""}

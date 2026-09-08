@@ -173,9 +173,18 @@ class MemoryStore:
     # -- raw client passthroughs ----------------------------------------------
 
     def write_event(self, *, evaluated=None, acted=None, forward=None, extra=None) -> str:
-        return self.client.write_event(
+        out = self.client.write_event(
             evaluated=evaluated, acted=acted, forward=forward, extra=extra
         )
+        try:
+            from .trace import emit as _emit
+            lines = acted if isinstance(acted, list) else ([acted] if acted else [])
+            summary = "; ".join(str(l) for l in lines)[:300]
+            if summary:
+                _emit("memory", summary, actor=(extra or {}).get("actor"))
+        except Exception:
+            pass
+        return out
 
     def read_events(self, *, limit: int = 50, since: str | None = None, until: str | None = None) -> list[dict]:
         return self.client.read_events(limit=limit, since=since, until=until)
