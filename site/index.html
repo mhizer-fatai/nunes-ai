@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nunes AI — three agents keep receipts</title>
+<meta name="description" content="Three AI agents share one persistent Sibyl Memory and refuse what contradicts a past decision. Read-only receipts of real Base Sepolia settlements." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --surface: #131316;
+    --surface-2: #18181c;
+    --ink: #f2ede1;
+    --ink-dim: #9a98a3;
+    --ink-faint: #63616c;
+    --line: #26262c;
+    --line-soft: #1d1d22;
+    --primary: #e8a33d;
+    --primary-soft: rgba(232, 163, 61, 0.13);
+    --primary-line: rgba(232, 163, 61, 0.32);
+    --green: #4edea3;
+    --green-soft: rgba(78, 222, 163, 0.1);
+    --green-line: rgba(78, 222, 163, 0.28);
+    --red: #ff6b6b;
+    --red-soft: rgba(255, 107, 107, 0.1);
+    --red-line: rgba(255, 107, 107, 0.3);
+    --amber: #f0b35c;
+    --violet: #c4aaff;
+    --violet-soft: rgba(139, 122, 255, 0.14);
+    --serif: "Playfair Display", Georgia, "Times New Roman", serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --dot: rgba(242, 237, 225, 0.04);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(1100px 520px at 50% -8%, rgba(232, 163, 61, 0.07) 0%, transparent 60%),
+      radial-gradient(1px 1px at 20% 30%, var(--dot) 0 1px, transparent 1px),
+      radial-gradient(1px 1px at 80% 60%, var(--dot) 0 1px, transparent 1px);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* top bar */
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10, 10, 12, 0.82);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .top .bar { display: flex; align-items: center; gap: 18px; height: 60px; }
+  .brand {
+    font-family: var(--mono); font-weight: 700; letter-spacing: 0.12em; font-size: 15px;
+    color: var(--ink); display: flex; align-items: center; gap: 10px;
+  }
+  .brand .seal { width: 9px; height: 9px; border-radius: 2px; background: var(--primary); box-shadow: 0 0 12px rgba(232, 163, 61, 0.8); }
+  .brand em { font-style: normal; color: var(--ink-faint); font-weight: 500; }
+  .nav { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+  .nav a { color: var(--ink-dim); font-size: 14px; font-weight: 500; }
+  .nav a:hover { color: var(--ink); text-decoration: none; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 5px 10px; border-radius: 999px;
+    border: 1px solid var(--green-line); color: var(--green); background: var(--green-soft);
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  /* hero */
+  .hero { padding: 84px 0 40px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--primary);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 500; font-size: clamp(40px, 6vw, 66px);
+    line-height: 1.06; margin: 18px 0 20px; letter-spacing: -0.01em;
+  }
+  h1 .line2 { color: var(--ink-faint); font-style: italic; font-weight: 500; }
+  .lede { max-width: 620px; color: var(--ink-dim); font-size: 17px; }
+  .cta-row { display: flex; gap: 14px; margin-top: 30px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px;
+    font-weight: 600; font-size: 15px; border: 1px solid transparent; cursor: pointer;
+  }
+  .btn-primary { background: var(--primary); color: #171006; }
+  .btn-primary:hover { text-decoration: none; filter: brightness(1.06); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--ink-faint); text-decoration: none; }
+  .caption { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+
+  /* section framing */
+  section { padding: 44px 0; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 26px; }
+  .sec-head .k { font-family: var(--mono); font-size: 12px; color: var(--primary); letter-spacing: 0.1em; }
+  .sec-head h2 { font-family: var(--serif); font-weight: 500; font-size: 30px; margin: 0; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px;
+    padding: 20px 20px 18px;
+  }
+  .stat .n { font-family: var(--mono); font-size: 32px; font-weight: 700; line-height: 1.05; }
+  .stat .l { margin-top: 6px; font-size: 13px; color: var(--ink-dim); }
+  .n.green { color: var(--green); }
+  .n.red { color: var(--red); }
+  .n.amber { color: var(--amber); }
+  .n.ink { color: var(--ink); }
+  .n small { font-size: 17px; font-weight: 500; color: var(--ink-faint); }
+
+  /* ledger */
+  .ledger {
+    border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden;
+    background: var(--surface);
+  }
+  .ledger-row {
+    display: grid;
+    grid-template-columns: 118px 110px 1fr;
+    gap: 16px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+  .ledger-row:last-child { border-bottom: none; }
+  .ledger-row:hover { background: var(--surface-2); }
+  .ledger-row .ts { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
+  .ledger-row .badge {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 4px 8px; border-radius: 6px; border: 1px solid; justify-self: start; white-space: nowrap;
+  }
+  .badge.pay    { color: var(--green); border-color: var(--green-line); background: var(--green-soft); }
+  .badge.refuse { color: var(--red);   border-color: var(--red-line);   background: var(--red-soft); }
+  .badge.rule   { color: var(--primary); border-color: var(--primary-line); background: var(--primary-soft); }
+  .badge.note   { color: var(--violet);  border-color: rgba(139,122,255,0.3); background: var(--violet-soft); }
+  .ledger-row .body { font-size: 14px; color: var(--ink-dim); min-width: 0; }
+  .ledger-row .body b { color: var(--ink); font-weight: 600; }
+  .ledger-row .body .mono, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .ledger-row .body .tx {
+    display: inline-block; margin-top: 6px; font-family: var(--mono); font-size: 12px;
+    color: var(--primary); border-bottom: 1px dashed var(--primary-line);
+  }
+  .ledger-row .body .tx:hover { text-decoration: none; border-bottom-style: solid; }
+
+  /* proof cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; padding: 22px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .card .h { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .card .h.h-green { color: var(--green); }
+  .card .h.h-red { color: var(--red); }
+  .card .h.h-amber { color: var(--primary); }
+  .card p { margin: 0; font-size: 14.5px; color: var(--ink-dim); }
+  .card p b { color: var(--ink); font-weight: 600; }
+
+  /* highlight strip */
+  .strip {
+    background: linear-gradient(180deg, var(--surface), transparent);
+    border: 1px solid var(--line-soft); border-radius: 14px; padding: 26px 26px;
+    display: flex; gap: 22px; align-items: center; flex-wrap: wrap;
+  }
+  .strip .big {
+    font-family: var(--serif); font-size: 26px; line-height: 1.25; flex: 1 1 380px; margin: 0;
+  }
+  .strip .big span.ref { color: var(--red); font-style: italic; }
+  .strip .big span.allow { color: var(--green); font-style: italic; }
+  .strip p { margin: 0; flex: 1 1 340px; color: var(--ink-dim); font-size: 15px; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--line-soft); padding: 40px 0 60px; margin-top: 30px; }
+  .foot { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+  .foot .col { max-width: 460px; }
+  .foot .f-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; }
+  .foot p, .foot li { color: var(--ink-dim); font-size: 13.5px; margin: 4px 0; }
+  .foot ul { list-style: none; padding: 0; margin: 0; }
+  .rule-tag {
+    display: inline-block; font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
+    border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 12px; background: var(--surface);
+  }
+
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .cards { grid-template-columns: 1fr; }
+    .ledger-row { grid-template-columns: 1fr; gap: 6px; }
+  }
+  @media (max-width: 560px) { .stats { grid-template-columns: 1fr; } .nav a.hide { display: none; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap bar">
+    <div class="brand"><span class="seal"></span>NUNES&nbsp;AI <em>/ shared memory</em></div>
+    <nav class="nav">
+      <a href="#receipts">receipts</a>
+      <a href="#proof">proof</a>
+      <a class="hide" href="https://github.com/mhizer-fatai/nunes-ai" target="_blank" rel="noopener">github ↗</a>
+      <span class="pill"><span class="dot"></span>Base Sepolia · live</span>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="eyebrow">Sibyl Labs Hackathon · built on Sibyl Memory</div>
+    <h1>Three AI agents keep receipts.<br /><span class="line2">Which one has earned your trust?</span></h1>
+    <p class="lede">
+      A planner, a policy agent, and a payments agent share <b>one persistent memory</b>.
+      Every ban, rule and payment is written down before it matters — and the guard refuses
+      anything that contradicts a decision a teammate already recorded, <i>across sessions and
+      restarts</i>. Delete the memory and the team becomes strangers: it re-pays, re-approves
+      and enforces nothing.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#receipts">Read the receipts ↓</a>
+      <a class="btn btn-ghost" href="#proof">How memory is load-bearing</a>
+      <span class="caption">Apache-2.0 · public repo</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="stats">
+      <div class="stat"><div class="n green">3</div><div class="l">live settlements on Base Sepolia</div></div>
+      <div class="stat"><div class="n amber">10.05<small> USDC</small></div><div class="l">settled through the memory guard</div></div>
+      <div class="stat"><div class="n red">3</div><div class="l">recorded refusals — money the team did not spend</div></div>
+      <div class="stat"><div class="n ink">3/3</div><div class="l">tx receipts confirmed onchain</div></div>
+    </div>
+  </section>
+
+  <section id="receipts">
+    <div class="sec-head"><span class="k">01</span><h2>The receipts</h2></div>
+    <div class="ledger" id="ledger"></div>
+    <p class="caption" style="margin-top:10px">
+      Read-only snapshot of Nunes AI's shared-memory journal (Sibyl Memory, COLD tier).
+      Every tx below links to BaseScan; settlement hashes were re-validated against the chain on build.
+      Nothing on this page signs or sends — this is a record, not a wallet.
+    </p>
+  </section>
+
+  <section id="proof">
+    <div class="sec-head"><span class="k">02</span><h2>Why the memory is load-bearing</h2></div>
+    <div class="cards">
+      <div class="card">
+        <div class="h h-red">The double-pay that never happened</div>
+        <p>
+          <b>inv-live-001</b> was settled once (tx <span class="mono">0xa782a891…</span>). The same
+          intent came back and the guard refused — <b>double-spend blocked</b>, citing the original
+          transaction. That replay refusal is the product.
+        </p>
+      </div>
+      <div class="card">
+        <div class="h h-amber">No rule in force → no payment</div>
+        <p>
+          The first request was refused because <b>no spending rule existed yet</b>. Only after
+          Policy recorded rule v1 (cap 100 USDC) did payments settle. Policy isn't decoration —
+          nothing pays under a blank memory.
+        </p>
+      </div>
+      <div class="card">
+        <div class="h h-amber">Registration is enforcement</div>
+        <p>
+          A payment to <b>unregistered vendor</b> “evil-corp” was refused — broadcast addresses are
+          resolved from the vendor directory in memory, never from what an agent types.
+        </p>
+      </div>
+    </div>
+
+    <div class="strip" style="margin-top:16px">
+      <p class="big">
+        Delete the memory and the same request sails through and pays again.
+        <span class="allow">With it</span>, the team refuses. <span class="ref">Without it</span>, it doesn't.
+      </p>
+      <p>
+        That is the falsifiable claim: <span class="mono">--no-memory</span> abates the layer and the core
+        function — refusing what memory forbids — breaks. The ablation never broadcasts unguarded
+        funds. Run it yourself in the repo, or watch it in the demo video.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="k">03</span><h2>Standing policy in shared memory</h2></div>
+    <div class="ledger">
+      <div class="ledger-row">
+        <div class="ts">now</div>
+        <span class="badge rule">rule v1</span>
+        <div class="body"><b>Cap 100 USDC</b> per obligation · denom USDC · effective <span class="mono">2026-01-01</span> · open-ended · <b>active</b></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <div class="col">
+      <div class="f-label">About this page</div>
+      <p>
+        A read-only showcase of <b>Nunes AI</b> — a three-agent finance team on one shared Sibyl
+        Memory, settling real USDC on <b>Base Sepolia</b>. Built entirely inside the Sep 1–10, 2026
+        hackathon window. No pre-existing codebase was reused.
+      </p>
+    </div>
+    <div class="col">
+      <div class="f-label">Links</div>
+      <ul>
+        <li>Repository — <a href="https://github.com/mhizer-fatai/nunes-ai" target="_blank" rel="noopener">mhizer-fatai/nunes-ai</a> (Apache-2.0)</li>
+        <li>README — <a href="https://github.com/mhizer-fatai/nunes-ai#readme" target="_blank" rel="noopener">where memory is load-bearing</a></li>
+        <li>Prior work declaration — <a href="https://github.com/mhizer-fatai/nunes-ai/blob/main/README.md" target="_blank" rel="noopener">README §Prior work</a></li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="f-label">Verify</div>
+      <p>
+        Settlements are ERC-20 USDC transfers on <b>Base Sepolia</b> (chain id 84532).
+        Block explorers: <a href="https://sepolia.basescan.org" target="_blank" rel="noopener">sepolia.basescan.org</a>.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<script>
+// --- Read-only snapshot of the shared-memory journal -----------------------
+// Rendered exactly as recorded by the agents, newest first. tx hashes link to
+// the public explorer; all three were re-validated onchain when this page was
+// generated.
+const EXPLORER = "https://sepolia.basescan.org/tx/";
+const SHORT = (h, n) => (h || "").slice(0, n);
+const LEDGER = [
+  { ts: "2026-09-05 21:58", kind: "refuse", badge: "refused",
+    html: "<b>PAYMENTS · Refused 2.00 USDC</b> to unregistered vendor <span class='mono'>evil-corp</span> (<span class='mono'>0x1111…1111</span>) for invoice-7 — missing vendor registration in memory." },
+  { ts: "2026-09-04 01:18", kind: "pay", badge: "settled", tx: "0x15274fda7af3cf75bd3b98ed073208a8564fe78ee0ea4611439efcbda58ba15c",
+    html: "<b>PAYMENTS · PAID 0.05 USDC → <span class='mono'>0xa69a1e80…ea8f75</span></b> · intent <span class='mono'>inv-b37cfd2e1e81e151</span>. Confirmed onchain." },
+  { ts: "2026-09-04 01:15", kind: "note", badge: "note",
+    html: "<b>PAYMENTS</b> · first settlement probe flagged a revert and the intent was <b>not double-paid</b>; the retry below is what confirmed." },
+  { ts: "2026-09-03 23:23", kind: "pay", badge: "settled", tx: "0xd8196bc4d2d0aee030ea56463c6a6652c26da422fddf5d0dcaada9ea94c86c42",
+    html: "<b>PAYMENTS · PAID 5.00 USDC → <span class='mono'>0xf42b6a2c…f2a3b</span></b> · intent <span class='mono'>inv-6718cdbc8e46f99f</span>. Onchain recipient confirmed." },
+  { ts: "2026-09-03 07:02", kind: "refuse", badge: "blocked",
+    html: "<b>GUARD · BLOCK 5.00 USDC replay of <span class='mono'>inv-live-001</span></b> — double-spend refused; cites the original transaction below." },
+  { ts: "2026-09-03 07:01", kind: "pay", badge: "settled", tx: "0xa782a891ef381e6fe7a946adffca27294dd5300072d27309104fd877da47441e",
+    html: "<b>PAYMENTS · PAID 5.00 USDC → <span class='mono'>0xeb3dd0fa…797842</span></b> · allowed under rule v1 · intent <span class='mono'>inv-live-001</span>. First live settlement." },
+  { ts: "2026-09-03 07:00", kind: "rule", badge: "rule",
+    html: "<b>POLICY · rule v1 active</b> — cap 100 USDC from 2026-01-01. Written to memory before any payment was allowed." },
+  { ts: "2026-09-03 07:00", kind: "refuse", badge: "blocked",
+    html: "<b>GUARD · BLOCK 5.00 USDC</b> to <span class='mono'>0xeb3dd0fa…797842</span> — <b>no spending rule was in force</b> at that time. Nothing pays under a blank memory." }
+];
+
+const BADGE_COLOR = { pay: "pay", refuse: "refuse", rule: "rule", note: "note" };
+
+function renderLedger() {
+  const host = document.getElementById("ledger");
+  LEDGER.forEach((row) => {
+    const el = document.createElement("div");
+    el.className = "ledger-row";
+    let txHtml = "";
+    if (row.tx) {
+      const short = SHORT(row.tx, 18) + "…";
+      txHtml = `<div><a class="tx" target="_blank" rel="noopener" href="${EXPLORER}${row.tx}">view on BaseScan · ${short}</a></div>`;
+    }
+    el.innerHTML =
+      `<div class="ts">${row.ts}</div>` +
+      `<span class="badge ${BADGE_COLOR[row.kind]}">${row.badge}</span>` +
+      `<div class="body">${row.html}${txHtml}</div>`;
+    host.appendChild(el);
+  });
+}
+renderLedger();
+</script>
+
+</body>
+</html>
